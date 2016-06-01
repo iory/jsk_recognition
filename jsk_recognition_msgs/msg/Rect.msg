@@ -1,4 +1,4 @@
-int32 x
-int32 y
-int32 width
-int32 height
+float64 x
+float64 y
+float64 width
+float64 height
