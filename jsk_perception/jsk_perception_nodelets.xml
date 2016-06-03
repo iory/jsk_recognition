@@ -174,7 +174,13 @@
       compute superpixels
     </description>
   </class>
-  <class name="jsk_perception/HoughCircleDetector" type="jsk_perception::HoughCircleDetector"
+  <class name="opencv_apps/hough_lines" type="hough_lines::HoughLinesNodelet"
+         base_class_type="nodelet::Nodelet">
+    <description>
+      nodelet to detect lines based on hough transformation
+    </description>
+  </class>
+  <class name="opencv_apps/hough_circles" type="hough_circles::HoughCirclesNodelet"
          base_class_type="nodelet::Nodelet">
     <description>
       nodelet to detect circles based on hough transformation
@@ -186,7 +192,7 @@
       Nodelet to compute histogram
     </description>
   </class>
-  <class name="jsk_perception/EdgeDetector" type="jsk_perception::EdgeDetector"
+  <class name="opencv_apps/edge_detection" type="edge_detection::EdgeDetectionNodelet"
          base_class_type="nodelet::Nodelet">
     <description>
       Nodelet to detect edges
