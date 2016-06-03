@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   mk
   nodelet
+  opencv_apps
   pcl_ros
   posedetection_msgs
   roscpp
@@ -75,13 +76,10 @@ generate_dynamic_reconfigure_options(
   cfg/SLICSuperPixels.cfg
   cfg/SnakeSegmentation.cfg
   cfg/camshiftdemo.cfg
-  cfg/EdgeDetector.cfg
-  cfg/HoughLines.cfg
   cfg/matchtemplate.cfg
   cfg/point_pose_extractor.cfg
   cfg/RectangleDetector.cfg
   cfg/ColorHistogram.cfg
-  cfg/HoughCircles.cfg
   cfg/ColorHistogramSlidingMatcher.cfg
   cfg/BackgroundSubstraction.cfg
   cfg/GrabCut.cfg
@@ -134,17 +132,22 @@ macro(jsk_perception_nodelet _nodelet_cpp _nodelet_class _single_nodelet_exec_na
   jsk_nodelet(${_nodelet_cpp} ${_nodelet_class} ${_single_nodelet_exec_name}
     jsk_perception_nodelet_sources jsk_perception_nodelet_executables)
 endmacro()
+macro(jsk_perception_nodelet_upstream _nodelet_class _single_nodelet_exec_name)
+  # create executable for nodelets which is moved to upstream and to remain the api
+  jsk_nodelet(dummy.cpp ${_nodelet_class} ${_single_nodelet_exec_name} _jsk_perception_unused)
+  list(APPEND jsk_perception_nodelet_executables ${_single_nodelet_exec_name})
+endmacro()
 jsk_perception_nodelet(src/bounding_box_to_rect.cpp "jsk_perception/BoundingBoxToRect" "bounding_box_to_rect")
 jsk_perception_nodelet(src/rect_array_actual_size_filter.cpp "jsk_perception/RectArrayActualSizeFilter" "rect_array_actual_size_filter")
 jsk_perception_nodelet(src/polygon_array_color_likelihood.cpp "jsk_perception/PolygonArrayColorLikelihood" "polygon_array_color_likelihood")
 jsk_perception_nodelet(src/polygon_array_color_histogram.cpp "jsk_perception/PolygonArrayColorHistogram" "polygon_array_color_histogram")
-jsk_perception_nodelet(src/edge_detector.cpp "edge_detection/edge_detection" "edge_detector")
+jsk_perception_nodelet_upstream("edge_detection/edge_detection" "edge_detector")
 jsk_perception_nodelet(src/sparse_image_encoder.cpp "jsk_perception/SparseImageEncoder" "sparse_image_encoder")
 jsk_perception_nodelet(src/sparse_image_decoder.cpp "jsk_perception/SparseImageDecoder" "sparse_image_decoder")
 jsk_perception_nodelet(src/color_histogram.cpp "jsk_perception/ColorHistogram" "color_histogram")
 jsk_perception_nodelet(src/background_substraction_nodelet.cpp "jsk_perception/BackgroundSubstraction" "background_substraction")
-jsk_perception_nodelet(src/hough_circles.cpp "hough_circles/hough_circles" "hough_circles")
-jsk_perception_nodelet(src/hough_lines.cpp "hough_lines/hough_lines" "hough_lines")
+jsk_perception_nodelet_upstream("hough_circles/hough_circles" "hough_circles")
+jsk_perception_nodelet_upstream("hough_lines/hough_lines" "hough_lines")
 jsk_perception_nodelet(src/fisheye_to_panorama.cpp "jsk_perception/FisheyeToPanorama" "fisheye_to_panorama")
 jsk_perception_nodelet(src/grabcut_nodelet.cpp "jsk_perception/GrabCut" "grabcut")
 jsk_perception_nodelet(src/slic_superpixels.cpp "jsk_perception/SLICSuperPixels" "slic_super_pixels")
@@ -230,9 +233,7 @@ target_link_libraries(camshiftdemo             ${catkin_LIBRARIES})
 target_link_libraries(linemod                  ${catkin_LIBRARIES})
 target_link_libraries(virtual_camera_mono      ${catkin_LIBRARIES})
 target_link_libraries(point_pose_extractor     ${catkin_LIBRARIES} ${Boost_LIBRARIES})
-target_link_libraries(edge_detector            ${catkin_LIBRARIES})
 target_link_libraries(white_balance_converter  ${catkin_LIBRARIES})
-target_link_libraries(hough_lines              ${catkin_LIBRARIES})
 target_link_libraries(rectangle_detector       ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 target_link_libraries(calc_flow                ${catkin_LIBRARIES})
 target_link_libraries(color_histogram_sliding_matcher  ${catkin_LIBRARIES})
@@ -244,7 +245,6 @@ add_dependencies(camshiftdemo             ${PROJECT_NAME}_gencfg ${PROJECT_NAME}
 add_dependencies(virtual_camera_mono      ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
 add_dependencies(point_pose_extractor     ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp libsiftfast)
 add_dependencies(white_balance_converter  ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
-add_dependencies(hough_lines              ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
 add_dependencies(rectangle_detector       ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
 add_dependencies(color_histogram_sliding_matcher       ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
 
@@ -269,7 +269,7 @@ add_custom_target(eusmodel_template ALL DEPENDS
 # download and install trained data
 add_custom_target(install_trained_data ALL COMMAND ${PROJECT_SOURCE_DIR}/scripts/install_trained_data.py)
 
-install(TARGETS camshiftdemo virtual_camera_mono point_pose_extractor white_balance_converter hough_lines rectangle_detector calc_flow color_histogram_sliding_matcher oriented_gradient oriented_gradient_node ${PROJECT_NAME}
+install(TARGETS camshiftdemo virtual_camera_mono point_pose_extractor white_balance_converter rectangle_detector calc_flow color_histogram_sliding_matcher oriented_gradient oriented_gradient_node ${PROJECT_NAME}
   ${jsk_perception_nodelet_executables}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
