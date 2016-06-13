@@ -93,6 +93,7 @@ generate_dynamic_reconfigure_options(
   cfg/EnvironmentPlaneModeling.cfg
   cfg/ColorHistogramMatcher.cfg
   cfg/ClusterPointIndicesDecomposer.cfg
+  cfg/DynamicFilterReconfigure.cfg
   cfg/GridSampler.cfg
   cfg/OrganizedEdgeDetector.cfg
   cfg/EdgeDepthRefinement.cfg
