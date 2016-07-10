@@ -8,6 +8,7 @@ add_message_files(
   BoundingBoxMovement.msg
   BoundingBox.msg
   BoundingBoxArrayWithCameraInfo.msg
+  BoundingBoxArrayWithRectArray.msg
   Circle2DArray.msg
   Circle2D.msg
   ClassificationResult.msg
@@ -16,6 +17,9 @@ add_message_files(
   ColorHistogram.msg
   DepthCalibrationParameter.msg
   DepthErrorResult.msg
+  DetectedRect.msg
+  DetectedRectArray.msg
+  DetectedRectArrayWithBoundingBoxArray.msg
   HeightmapConfig.msg
   Histogram.msg
   HistogramWithRangeBin.msg
@@ -29,6 +33,7 @@ add_message_files(
   ModelCoefficientsArray.msg
   ParallelEdgeArray.msg
   ParallelEdge.msg
+  PeopleBoundingBoxes.msg
   PlotData.msg
   PointsArray.msg
   PolygonArray.msg
