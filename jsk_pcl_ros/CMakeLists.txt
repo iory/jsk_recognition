@@ -321,6 +321,8 @@ jsk_pcl_nodelet(src/uniform_sampling_nodelet.cpp
   "jsk_pcl/UniformSampling" "uniform_sampling")
 jsk_pcl_nodelet(src/pointcloud_localization_nodelet.cpp
   "jsk_pcl/PointCloudLocalization" "pointcloud_localization")
+jsk_pcl_nodelet(src/people_tracking_nodelet.cpp
+  "jsk_pcl/PeopleTracking" "people_tracking")
 jsk_pcl_nodelet(src/geometric_consistency_grouping_nodelet.cpp
   "jsk_pcl/GeometricConsistencyGrouping" "geometric_consistency_grouping")
 jsk_pcl_nodelet(src/convex_connected_voxels_nodelet.cpp
