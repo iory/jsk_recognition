@@ -50,6 +50,7 @@ namespace jsk_perception
     pnh_->param("tf_queue_size", tf_queue_size_, 10);
     pub_ = advertise<jsk_recognition_msgs::RectArray>(*pnh_, "output", 1);
     pub_internal_ = pnh_->advertise<jsk_recognition_msgs::BoundingBoxArrayWithCameraInfo>("internal", 1);
+    pub_bba_with_rectarray_ = advertise<jsk_recognition_msgs::BoundingBoxArrayWithRectArray>(*pnh_, "boxes_rects", 1);
     sub_box_with_info_.subscribe(*pnh_, "internal", 1);
     //onInitPosrPocess();
   }
@@ -59,7 +60,7 @@ namespace jsk_perception
     sub_info_.subscribe(*pnh_, "input/info", 1);
     sub_box_.subscribe(*pnh_, "input", 1);
     if (approximate_sync_) {
-      async_ = boost::make_shared<message_filters::Synchronizer<ApproximateSyncPolicy> >(queue_size_); 
+      async_ = boost::make_shared<message_filters::Synchronizer<ApproximateSyncPolicy> >(queue_size_);
       async_->connectInput(sub_info_, sub_box_);
       async_->registerCallback(boost::bind(&BoundingBoxToRect::inputCallback, this, _1, _2));
     } else {
@@ -126,6 +127,12 @@ namespace jsk_perception
       ros_rect.height = rect.height;
       rect_array.rects.push_back(ros_rect);
     }
+    jsk_recognition_msgs::BoundingBoxArrayWithRectArray boxes_rects_msg;
+    boxes_rects_msg.header = msg->camera_info.header;
+    boxes_rects_msg.boxes = msg->boxes;
+    boxes_rects_msg.rects = rect_array;
+
+    pub_bba_with_rectarray_.publish(boxes_rects_msg);
     pub_.publish(rect_array);
   }
 }

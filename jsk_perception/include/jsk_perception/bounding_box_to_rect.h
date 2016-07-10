@@ -40,6 +40,7 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_msgs/RectArray.h>
 #include <jsk_recognition_msgs/BoundingBoxArrayWithCameraInfo.h>
+#include <jsk_recognition_msgs/BoundingBoxArrayWithRectArray.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <jsk_topic_tools/diagnostic_nodelet.h>
 #include <message_filters/subscriber.h>
@@ -86,8 +87,9 @@ namespace jsk_perception
     boost::shared_ptr<tf::MessageFilter<jsk_recognition_msgs::BoundingBoxArrayWithCameraInfo> > tf_filter_;
     ros::Publisher pub_;
     ros::Publisher pub_internal_;
+    ros::Publisher pub_bba_with_rectarray_;
   private:
-    
+
   };
 }
 
