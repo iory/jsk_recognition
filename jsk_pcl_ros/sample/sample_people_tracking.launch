@@ -1,0 +1,150 @@
+<launch>
+
+  <!-- <arg name="gui" default="true" /> -->
+
+  <arg name="INPUT_CLOUD" value="/camera_remote/depth_registered/points" />
+  <arg name="FILTERED_CLOUD" value="/zaxis_filter/output" />
+  <arg name="INPUT_IMAGE" value="/camera_remote/rgb/image_rect_color" />
+
+  <arg name="CAMERA_INFO" value="/camera_remote/rgb/camera_info" />
+
+  <arg name="MANAGER" value="people_tracking_manager" />
+  <node name="$(arg MANAGER)"
+        pkg="nodelet" type="nodelet"
+        args="manager"/>
+
+  <node name="zaxis_filter"
+        pkg="nodelet" type="nodelet"
+        args="load pcl/PassThrough $(arg MANAGER)">
+    <remap from="~input" to="$(arg INPUT_CLOUD)" />
+    <rosparam>
+      keep_organized: true
+      filter_field_name: z
+      filter_limit_min: -0.5
+      filter_limit_max: 5.0
+    </rosparam>
+  </node>
+
+  <node name="footstep_polygon_publisher"
+        pkg="nodelet" type="nodelet"
+        clear_params="true"
+        args="load jsk_pcl/StaticPolygonArrayPublisher /$(arg MANAGER)">
+    <remap from="~input" to="$(arg INPUT_CLOUD)" />
+    <rosparam>
+      use_message: true
+      frame_ids: [ground]
+      polygon_array: [[[10.0, -10.0, -0.05],[-10.0, -10.0, -0.05],[-10.0, 10.0, -0.05], [10.0, 10.0, -0.05]]]
+    </rosparam>
+  </node>
+
+  <node name="polygon_array_transformer"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/PolygonArrayTransformer $(arg MANAGER)"
+        clear_params="true">
+    <remap from="~input_polygons" to="/footstep_polygon_publisher/output_polygons" />
+    <remap from="~input_coefficients" to="/footstep_polygon_publisher/output_coefficients" />
+    <rosparam>
+      frame_id: camera_rgb_optical_frame
+    </rosparam>
+  </node>
+
+  <node name="people_tracking"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/PeopleTracking people_tracking_manager">
+    <remap from="~input" to="$(arg FILTERED_CLOUD)" />
+    <remap from="~input/info" to="$(arg CAMERA_INFO)" />
+    <remap from="~input/coefficients" to="/polygon_array_transformer/output_coefficients" />
+    <param name="filename" value="$(find jsk_pcl_ros)/config/trainedLinearSVMForPeopleDetectionWithHOG.yaml" />
+    <rosparam>
+      height_threshold: 1.5
+      min_confidence: -5.0
+    </rosparam>
+  </node>
+
+  <node name="transform_bounding_box"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/TfTransformBoundingBoxArray $(arg MANAGER)">
+    <remap from="~input" to="/people_tracking/boxes" />
+    <rosparam>
+      target_frame_id: /ground
+    </rosparam>
+  </node>
+
+  <node name="transform_bba"
+        pkg="jsk_pcl_ros" type="transform_bba.py">
+    <remap from="~input" to="/transform_bounding_box/output" />
+  </node>
+
+  <node name="rearranged_people_bounding_box"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/RearrangeBoundingBoxPublisher $(arg MANAGER)">
+    <remap from="~input" to="/transform_bba/output" />
+    <rosparam>
+      offset_x: 0.0
+      offset_y: 0.0
+      offset_z: 0.1
+      scale_x: 1.0
+      scale_y: 0.9
+      scale_z: 1.0
+    </rosparam>
+  </node>
+
+  <node name="bounding_box_filter"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/BoundingBoxFilter $(arg MANAGER)">
+    <remap from="~input_box" to="/rearranged_people_bounding_box/output" />
+    <remap from="~input_indices" to="" />
+  </node>
+
+  <!-- <node name="tf_transform_bounding_box" -->
+  <!--       pkg="nodelet" type="nodelet" -->
+  <!--       args="load jsk_pcl/TfTransformBoundingBoxArray $(arg MANAGER)"> -->
+    <!-- <remap from="~input" to="/transform_bba/output" /> -->
+  <!--   <remap from="~input" to="/rearranged_people_bounding_box/output" /> -->
+  <!--   <rosparam> -->
+  <!--     target_frame_id: /camera_rgb_optical_frame -->
+  <!--   </rosparam> -->
+  <!-- </node> -->
+
+  <node name="bounding_box_to_rect"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_perception/BoundingBoxToRect $(arg MANAGER)">
+    <remap from="~input" to="/rearranged_people_bounding_box/output" />
+    <!-- <remap from="~input" to="/tf_transform_bounding_box/output" /> -->
+    <remap from="~input/info" to="$(arg CAMERA_INFO)" />
+    <rosparam>
+      approximate_sync: true
+    </rosparam>
+  </node>
+
+  <!-- <node name="fast_rcnn" -->
+  <!--       pkg="jsk_perception" type="fast_rcnn.py" -->
+  <!--       output="screen"> -->
+  <!--   <remap from="~input" to="$(arg INPUT_IMAGE)" /> -->
+    <!-- <remap from="~input/rect_array" to="/bounding_box_to_rect/output" /> -->
+  <!--   <remap from="~input/boxes_rects" to="/bounding_box_to_rect/boxes_rects" /> -->
+  <!--   <rosparam> -->
+  <!--     queue_size: 1 -->
+  <!--     always_subscribe: true -->
+  <!--     approximate_sync: true -->
+  <!--     model: vgg_cnn_m_1024 -->
+  <!--   </rosparam> -->
+  <!-- </node> -->
+
+  <!-- <node name="detected_boxes_rects_decomposer" -->
+  <!--       pkg="jsk_pcl_ros" type="detected_boxes_rects.py"> -->
+  <!--   <remap from="~input" to="/fast_rcnn/output/detected_rects_boxes" /> -->
+  <!-- </node> -->
+
+  <!-- <group if="$(arg gui)"> -->
+  <!--   <node name="image_view0" -->
+  <!--         pkg="image_view" type="image_view"> -->
+  <!--     <remap from="image" to="/cluster_decomposer/mask" /> -->
+  <!--   </node> -->
+  <!--   <node name="image_view1" -->
+  <!--         pkg="image_view" type="image_view"> -->
+  <!--     <remap from="image" to="/cluster_decomposer/label" /> -->
+  <!--   </node> -->
+  <!-- </group> -->
+
+</launch>

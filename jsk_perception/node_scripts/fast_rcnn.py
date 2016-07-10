@@ -10,7 +10,11 @@ import cv2
 import numpy as np
 
 import cv_bridge
+from jsk_recognition_msgs.msg import DetectedRectArray
+from jsk_recognition_msgs.msg import DetectedRect
+from jsk_recognition_msgs.msg import DetectedRectArrayWithBoundingBoxArray
 from jsk_recognition_msgs.msg import RectArray
+from jsk_recognition_msgs.msg import BoundingBoxArrayWithRectArray
 import jsk_recognition_utils
 from jsk_recognition_utils.chainermodels import VGG16FastRCNN
 from jsk_recognition_utils.chainermodels import VGG_CNN_M_1024
@@ -43,17 +47,23 @@ class FastRCNN(ConnectionBasedTransport):
         super(FastRCNN, self).__init__()
         self.model = model
         self._pub = self.advertise('~output', Image, queue_size=1)
+        self._detected_rect_array_pub = self.advertise('~output/detected_rect_array', DetectedRectArray, queue_size=1)
+        self._detected_rects_boxes_pub = self.advertise('~output/detected_rects_boxes', DetectedRectArrayWithBoundingBoxArray, queue_size=1)
         self.target_names = target_names
         self.pixel_means = np.array(pixel_means, dtype=np.float32)
         self.use_gpu = use_gpu
+        self._detected_rect_array = DetectedRectArray()
+        self._detected_rects_boxes = DetectedRectArrayWithBoundingBoxArray()
 
     def subscribe(self):
         self._sub = message_filters.Subscriber('~input', Image)
         self._sub_rects = message_filters.Subscriber('~input/rect_array',
                                                      RectArray)
+        self._sub_boxes_rects = message_filters.Subscriber('~input/boxes_rects',
+                                                           BoundingBoxArrayWithRectArray)
         use_async = rospy.get_param('~approximate_sync', False)
         queue_size = rospy.get_param('~queue_size', 100)
-        subs = [self._sub, self._sub_rects]
+        subs = [self._sub, self._sub_boxes_rects]
         if use_async:
             slop = rospy.get_param('~slop', 0.1)
             sync = message_filters.ApproximateTimeSynchronizer(
@@ -66,20 +76,25 @@ class FastRCNN(ConnectionBasedTransport):
         self._sub.unregister()
         self._sub_rects.unregister()
 
-    def _detect(self, imgmsg, rects_msg):
+    def _detect(self, imgmsg, boxes_rects_msg):
+        rects_msg = boxes_rects_msg.rects
         bridge = cv_bridge.CvBridge()
         im_orig = bridge.imgmsg_to_cv2(imgmsg, desired_encoding='bgr8')
         im, im_scale = img_preprocessing(im_orig, self.pixel_means)
         rects_orig = jsk_recognition_utils.rects_msg_to_ndarray(rects_msg)
         rects = rects_orig * im_scale
         scores, bbox_pred = self._im_detect(im, rects)
+        self._detected_rect_array = DetectedRectArray()
+        self._detected_rect_array.header = imgmsg.header
+        self._detected_rects_boxes = DetectedRectArrayWithBoundingBoxArray()
+        self._detected_rects_boxes.header = imgmsg.header
         out_im = self._draw_result(
-            im_orig, scores, bbox_pred, rects_orig, nms_thresh=0.3, conf=0.8)
+            im_orig, scores, bbox_pred, rects_orig, boxes_rects_msg.boxes, nms_thresh=0.3, conf=0.5)
         out_msg = bridge.cv2_to_imgmsg(out_im, encoding='bgr8')
         out_msg.header = imgmsg.header
         self._pub.publish(out_msg)
 
-    def _draw_result(self, im, clss, bbox, rects, nms_thresh, conf):
+    def _draw_result(self, im, clss, bbox, rects, boxes, nms_thresh, conf):
         for cls_id in range(1, len(self.target_names)):
             _cls = clss[:, cls_id][:, np.newaxis]
             _bbx = bbox[:, cls_id * 4: (cls_id + 1) * 4]
@@ -110,6 +125,7 @@ class FastRCNN(ConnectionBasedTransport):
 
                 cv2.rectangle(im, (int(x1), int(y1)), (int(x2), int(y2)),
                               (0, 0, 255), 2, cv2.CV_AA)
+
                 ret, baseline = cv2.getTextSize(
                     self.target_names[cls_id], cv2.FONT_HERSHEY_SIMPLEX,
                     1.0, 1)
@@ -119,6 +135,14 @@ class FastRCNN(ConnectionBasedTransport):
                             (int(x1), int(y2) - baseline),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0,
                             (255, 255, 255), 1, cv2.CV_AA)
+                detected_rect = DetectedRect(x = int(x1), y = int(y1), width = int(_width), height = int(_height),
+                                             label = self.target_names[cls_id], score = 0.0)
+                self._detected_rect_array.rects.append(detected_rect)
+                self._detected_rects_boxes.rects.rects.append(detected_rect)
+                orig_box = boxes.boxes[keep[i]]
+                self._detected_rects_boxes.boxes.boxes.append(orig_box)
+        self._detected_rect_array_pub.publish(self._detected_rect_array)
+        self._detected_rects_boxes_pub.publish(self._detected_rects_boxes)
         return im
 
     def _im_detect(self, im, rects):
