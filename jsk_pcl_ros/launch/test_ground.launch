@@ -1,0 +1,315 @@
+<launch>
+  <arg name="MANAGER" default="ground_plane_manager" />
+
+  <arg name="CAMERA" default="camera_remote" />
+  <arg name="IMAGE" default="image_rect_color" />
+  <arg name="DEPTH_SPACE" default="depth_registered" />
+  <arg name="INPUT_CLOUD" value="/$(arg CAMERA)/$(arg DEPTH_SPACE)/points" />
+  <arg name="CAMERA_INFO" value="/$(arg CAMERA)/rgb/camera_info" />
+  <arg name="IMAGE_TOPIC" value="/$(arg CAMERA)/rgb/$(arg IMAGE)" />
+
+  <arg name="PASS_FILTERED_CLOUD" value="/zaxis_filter/output" />
+  <arg name="BASE_FRAME_ID" value="/ground" />
+
+  <node name="$(arg MANAGER)"
+        pkg="nodelet" type="nodelet"
+        args="manager"
+        />
+
+  <node name="footstep_polygon_publisher"
+        pkg="nodelet" type="nodelet"
+        clear_params="true"
+        args="load jsk_pcl/StaticPolygonArrayPublisher /$(arg MANAGER)">
+    <remap from="~input" to="$(arg INPUT_CLOUD)" />
+    <rosparam>
+      use_message: true
+      frame_ids: [ground]
+      polygon_array: [[[10.0, -10.0, -0.05],[-10.0, -10.0, -0.05],[-10.0, 10.0, -0.05], [10.0, 10.0, -0.05]]]
+    </rosparam>
+  </node>
+
+  <node pkg="nodelet" type="nodelet" name="polygon_array_transformer"
+        args="load jsk_pcl/PolygonArrayTransformer $(arg MANAGER)"
+        clear_params="true">
+    <remap from="~input_polygons" to="/footstep_polygon_publisher/output_polygons" />
+    <remap from="~input_coefficients" to="/footstep_polygon_publisher/output_coefficients" />
+    <rosparam>
+      frame_id: camera_rgb_optical_frame
+    </rosparam>
+  </node>
+
+  <node name="attention_clipper"
+        pkg="jsk_pcl_ros" type="attention_clipper"
+        output="screen">
+    <remap from="~input" to="$(arg CAMERA_INFO)" />
+    <remap from="~input/points" to="$(arg INPUT_CLOUD)" />
+    <rosparam>
+      use_multiple_attention: true
+    </rosparam>
+  </node>
+
+  <node name="transform_input"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/TfTransformCloud $(arg MANAGER)">
+    <remap from="~input" to="$(arg INPUT_CLOUD)" />
+    <param name="target_frame_id" value="$(arg BASE_FRAME_ID)" />
+  </node>
+
+  <node name="zaxis_filter"
+        pkg="nodelet" type="nodelet"
+        args="load pcl/PassThrough $(arg MANAGER)">
+    <remap from="~input" to="$(arg INPUT_CLOUD)" />
+    <rosparam>
+      keep_organized: true
+      filter_field_name: z
+      filter_limit_min: -0.5
+      filter_limit_max: 3.0
+    </rosparam>
+  </node>
+
+  <node name="people_tracking"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/PeopleTracking $(arg MANAGER)">
+    <!-- <remap from="~input" to="$(arg INPUT_CLOUD)" /> -->
+    <remap from="~input" to="/zaxis_filter/output" />
+    <!-- <remap from="~input" to="$(arg FILTERED_CLOUD)" /> -->
+    <remap from="~input/info" to="$(arg CAMERA_INFO)" />
+    <remap from="~input/coefficients" to="/polygon_array_transformer/output_coefficients" />
+    <param name="filename" value="$(find jsk_pcl_ros)/config/trainedLinearSVMForPeopleDetectionWithHOG.yaml" />
+    <rosparam>
+      height_threshold: 1.4
+      min_confidence: -5.0
+    </rosparam>
+  </node>
+
+  <node name="transform_bounding_box"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/TfTransformBoundingBoxArray $(arg MANAGER)">
+    <remap from="~input" to="/people_tracking/boxes" />
+    <rosparam>
+      target_frame_id: /ground
+    </rosparam>
+  </node>
+
+  <node name="transform_bba"
+        pkg="jsk_pcl_ros" type="transform_bba.py">
+    <remap from="~input" to="/transform_bounding_box/output" />
+  </node>
+
+  <node name="transform_bounding_box_to_camera_frame"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/TfTransformBoundingBoxArray $(arg MANAGER)">
+    <remap from="~input" to="/transform_bba/output" />
+    <rosparam>
+      target_frame_id: /camera_rgb_optical_frame
+    </rosparam>
+  </node>
+
+  <node name="resized_people_bounding_box"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/RearrangeBoundingBox $(arg MANAGER)">
+    <remap from="~input" to="/transform_bba/output" />
+    <rosparam>
+      offset_x: -0.6
+      offset_y: 0.0
+      offset_z: 0.0
+      scale_x: 2.0
+      scale_y: 1.5
+      scale_z: 2.0
+    </rosparam>
+  </node>
+
+  <node name="people_clipper"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/AttentionClipper $(arg MANAGER)">
+    <remap from="~input" to="$(arg CAMERA_INFO)" />
+    <remap from="~input/points" to="$(arg PASS_FILTERED_CLOUD)" />
+    <!-- <remap from="~input/box_array" to="/transform_bba/output" /> -->
+    <remap from="~input/box_array" to="/resized_people_bounding_box/output" />
+    <rosparam>
+      use_multiple_attention: true
+    </rosparam>
+  </node>
+
+  <node name="people_point_cloud"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/ExtractIndices $(arg MANAGER)">
+    <remap from="~input" to="$(arg PASS_FILTERED_CLOUD)" />
+    <remap from="~indices" to="/people_clipper/output/point_indices" />
+    <rosparam>
+      keep_organized: true
+    </rosparam>
+  </node>
+
+  <node name="roi_attention_clipper"
+        pkg="jsk_pcl_ros" type="roi_clipper"
+        output="screen">
+    <remap from="~input/image" to="$(arg IMAGE_TOPIC)" />
+    <remap from="~input/camera_info" to="people_clipper/output" />
+  </node>
+
+  <!-- ground clipper -->
+  <node name="polygon_to_boundingbox"
+        pkg="jsk_pcl_ros" type="polygon_to_boundingbox.py"
+        >
+    <remap from="~input" to="/footstep_polygon_publisher/output_polygons" />
+  </node>
+
+  <node name="wightout_ground_bounding_box"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/RearrangeBoundingBox $(arg MANAGER)">
+    <remap from="~input" to="/polygon_to_boundingbox/output" />
+    <rosparam>
+      offset_x: 0.0
+      offset_y: 0.0
+      offset_z: -0.2
+      scale_x: 1.0
+      scale_y: 1.0
+      scale_z: 1.0
+    </rosparam>
+  </node>
+
+  <node name="ground_clipper"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/AttentionClipper $(arg MANAGER)">
+    <remap from="~input" to="$(arg CAMERA_INFO)" />
+    <!-- <remap from="~input/points" to="$(arg PASS_FILTERED_CLOUD)" /> -->
+    <remap from="~input/points" to="/people_point_cloud/output" />
+    <remap from="~input/box_array" to="/wightout_ground_bounding_box/output" />
+    <rosparam>
+      use_multiple_attention: true
+      negative: false
+    </rosparam>
+  </node>
+
+  <node name="extract_indices"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/ExtractIndices $(arg MANAGER)">
+    <!-- <remap from="~input" to="$(arg PASS_FILTERED_CLOUD)" /> -->
+    <remap from="~input" to="/people_point_cloud/output" />
+    <remap from="~indices" to="/ground_clipper/output/point_indices" />
+    <rosparam>
+      keep_organized: true
+    </rosparam>
+  </node>
+
+  <node name="ground_roi_attention_clipper"
+        pkg="jsk_pcl_ros" type="roi_clipper"
+        output="screen">
+    <remap from="~input/image" to="$(arg IMAGE_TOPIC)" />
+    <remap from="~input/camera_info" to="/ground_clipper/output" />
+  </node>
+
+  <!-- <include file="$(find jsk_pcl_ros)/launch/hsi_color_filter.launch"> -->
+    <!-- <arg name="DEFAULT_NAMESPACE" value="/camera/depth_registered"/> -->
+  <!--   <arg name="DEFAULT_NAMESPACE" value="/extract_indices"/> -->
+  <!--   <arg name="FILTER_NAME_SUFFIX" value="hsi_color" /> -->
+  <!--   <arg name="INPUT" value="output" /> -->
+  <!--   <arg name="h_max" value="47" /> -->
+  <!--   <arg name="h_min" value="-40" /> -->
+  <!--   <arg name="s_max" value="62" /> -->
+  <!--   <arg name="s_min" value="30" /> -->
+  <!--   <arg name="i_max" value="255" /> -->
+  <!--   <arg name="i_min" value="140" /> -->
+  <!-- </include> -->
+
+  <!-- <node name="tools_clipper" -->
+  <!--       pkg="nodelet" type="nodelet" -->
+  <!--       args="load jsk_pcl/AttentionClipper $(arg MANAGER)"> -->
+  <!--   <remap from="~input" to="$(arg CAMERA_INFO)" /> -->
+  <!--   <remap from="~input/points" to="/people_point_cloud/output" /> -->
+  <!--   <remap from="~input/box_array" to="/people_bounding_box/output" /> -->
+  <!--   <rosparam> -->
+  <!--     use_multiple_attention: true -->
+  <!--     negative: true -->
+  <!--   </rosparam> -->
+  <!-- </node> -->
+
+  <!-- <node name="tools_point_cloud" -->
+  <!--       pkg="nodelet" type="nodelet" -->
+  <!--       args="load jsk_pcl/ExtractIndices $(arg MANAGER)"> -->
+  <!--   <remap from="~input" to="/people_point_cloud/output" /> -->
+  <!--   <remap from="~indices" to="/tools_clipper/output/point_indices" /> -->
+  <!--   <rosparam> -->
+  <!--     keep_organized: true -->
+  <!--     negative: false -->
+  <!--   </rosparam> -->
+  <!-- </node> -->
+
+  <!-- line segment detector -->
+  <!-- <arg name="LINE_SEGMENT_POINT_CLOUD" value="/people_point_cloud/output" /> -->
+  <arg name="LINE_SEGMENT_POINT_CLOUD" value="/extract_indices/output" />
+  <arg name="LINE_MANAGER" value="line_segment_manager" />
+  <node name="line_segment_manager"
+        pkg="nodelet" type="nodelet"
+        args="manager" output="screen"/>
+
+  <node name="euclidean_clustering"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/EuclideanClustering $(arg MANAGER)"
+        output="screen">
+    <remap from="~input" to="$(arg LINE_SEGMENT_POINT_CLOUD)" />
+  </node>
+  <node pkg="nodelet" type="nodelet"
+        name="euclidean_clustering_decomposer"
+        args="load jsk_pcl/ClusterPointIndicesDecomposerZAxis line_segment_manager"
+        output="screen">
+    <remap from="~input" to="$(arg LINE_SEGMENT_POINT_CLOUD)" />
+    <remap from="~target" to="euclidean_clustering/output" />
+    <rosparam>
+      publish_clouds: false
+      publish_tf: false
+    </rosparam>
+  </node>
+  <node name="line_segment_detector"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/LineSegmentDetector $(arg MANAGER)">
+    <remap from="~input" to="$(arg LINE_SEGMENT_POINT_CLOUD)" />
+    <remap from="~input_indices" to="/euclidean_clustering/output" />
+    <rosparam>
+      outlier_threshold: 0.016
+      max_iteration: 3306
+      min_indices: 373
+      min_length: 0.8
+    </rosparam>
+  </node>
+
+  <!-- hand position detector -->
+  <include file="$(find jsk_pcl_ros)/launch/hsi_color_filter.launch">
+    <!-- <arg name="DEFAULT_NAMESPACE" value="/camera/depth_registered"/> -->
+    <arg name="DEFAULT_NAMESPACE" value="/people_point_cloud"/>
+    <arg name="FILTER_NAME_SUFFIX" value="hsi_color" />
+    <arg name="INPUT" value="output" />
+    <arg name="h_max" value="47" />
+    <arg name="h_min" value="-40" />
+    <arg name="s_max" value="62" />
+    <arg name="s_min" value="30" />
+    <arg name="i_max" value="255" />
+    <arg name="i_min" value="140" />
+  </include>
+
+  <node name="people_apply_mask_image"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_perception/ApplyMaskImage $(arg LINE_MANAGER)">
+    <remap from="~input" to="/$(arg CAMERA)/rgb_half/image_rect_color" />
+    <remap from="~input/mask" to="/euclidean_clustering_decomposer/mask" />
+    <rosparam>
+      approximate_sync: true
+    </rosparam>
+  </node>
+
+  <node name="hough_line_manager"
+        pkg="nodelet" type="nodelet"
+        args="manager" output="screen" />
+  <node name="hough_line"
+        pkg="nodelet" type="nodelet"
+        args="load hough_lines/hough_lines /hough_line_manager"
+        output="screen">
+    <remap from="image" to="/people_apply_mask_image/output" />
+    <param name="threshold" value="150o" />
+    <rosparam>
+      use_camera_info: false
+    </rosparam>
+  </node>
+
+</launch>

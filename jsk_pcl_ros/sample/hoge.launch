@@ -1,0 +1,22 @@
+<launch>
+
+  <arg name="MANAGER" value="people_tracking_manager" />
+  <node name="$(arg MANAGER)"
+        pkg="nodelet" type="nodelet"
+        args="manager"/>
+
+  <node name="rearranged_people_bounding_box"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl/RearrangeBoundingBoxPublisher $(arg MANAGER)">
+    <remap from="~input" to="/cube_nearest_point/bbox_array" />
+    <rosparam>
+      offset_x: 0.4
+      offset_y: 0.4
+      offset_z: 0.4
+      scale_x: 1.5
+      scale_y: 1.4
+      scale_z: 1.5
+    </rosparam>
+  </node>
+
+</launch>
