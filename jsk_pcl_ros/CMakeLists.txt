@@ -73,6 +73,7 @@ generate_dynamic_reconfigure_options(
   cfg/BorderEstimator.cfg
   cfg/HintedStickFinder.cfg
   cfg/HintedPlaneDetector.cfg
+  cfg/PeopleTracking.cfg
   cfg/TorusFinder.cfg
   cfg/NormalDirectionFilter.cfg
   cfg/RegionGrowingMultiplePlaneSegmentation.cfg
