@@ -32,7 +32,15 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 
+#Searching CUDA
+find_package(CUDA)
+
+#Include the FindCUDA script
+include(FindCUDA)
+
 # For kinfu
+find_package(PCL QUIET COMPONENTS gpu_kinfu_large_scale)
+# For People Pose Detection
 find_package(PCL QUIET COMPONENTS gpu_kinfu_large_scale)
 
 pkg_check_modules(yaml_cpp yaml-cpp REQUIRED)
@@ -80,6 +88,7 @@ generate_dynamic_reconfigure_options(
   cfg/LineSegmentCollector.cfg
   cfg/LineSegmentDetector.cfg
   cfg/ParticleFilterTracking.cfg
+  cfg/PeoplePoseDetection.cfg
   cfg/BilateralFilter.cfg
   cfg/ICPRegistration.cfg
   cfg/OrganizedPassThrough.cfg
@@ -344,6 +353,10 @@ if (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
     "jsk_pcl/Kinfu" "kinfu")
   include_directories(/usr/local/cuda/include)
 endif (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
+if (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
+  jsk_pcl_nodelet(src/people_pose_detection_nodelet.cpp "jsk_pcl/PeoplePoseDetection" "people_pose_detection")
+  include_directories(/usr/local/cuda/include)
+endif (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
 jsk_pcl_nodelet_upstream(jsk_pcl_ros_utils "jsk_pcl/PCDReaderWithPose" "pcd_reader_with_pose")
 jsk_pcl_nodelet(src/octree_voxel_grid_nodelet.cpp
   "jsk_pcl/OctreeVoxelGrid" "octree_voxel_grid")
@@ -370,6 +383,16 @@ add_library(jsk_pcl_ros SHARED ${jsk_pcl_nodelet_sources})
 if (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
   target_link_libraries(jsk_pcl_ros
     ${PCL_GPU_KINFU_LARGE_SCALE_LIBRARY} ${PCL_GPU_CONTAINERS_LIBRARY}
+    ${catkin_LIBRARIES} ${pcl_ros_LIBRARIES} ${OpenCV_LIBRARIES} yaml-cpp
+    jsk_pcl_ros_base)
+else (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
+  target_link_libraries(jsk_pcl_ros
+    ${catkin_LIBRARIES} ${pcl_ros_LIBRARIES} ${OpenCV_LIBRARIES} yaml-cpp
+    jsk_pcl_ros_base)
+endif (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
+if (PCL_GPU_KINFU_LARGE_SCALE_FOUND)
+  target_link_libraries(jsk_pcl_ros
+    ${GPU_KINFU_LARGE_SCALE_FOUND_LIBRARY} ${PCL_GPU_CONTAINERS_LIBRARY}
     ${catkin_LIBRARIES} ${pcl_ros_LIBRARIES} ${OpenCV_LIBRARIES} yaml-cpp
     jsk_pcl_ros_base)
 else (PCL_GPU_KINFU_LARGE_SCALE_FOUND)

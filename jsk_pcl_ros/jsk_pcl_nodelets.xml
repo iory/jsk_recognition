@@ -445,6 +445,12 @@
       particle filter based tracker using KLDAdaptiveParticleFilterOMPTracker
     </description>
   </class>
+  <class name="jsk_pcl/PeoplePoseDetection" type="jsk_pcl_ros::PeoplePoseDetection"
+         base_class_type="nodelet::Nodelet">
+    <description>
+      People pose detection using pcl
+    </description>
+  </class>
 
   <class name="jsk_pcl/RGBColorFilter" type="jsk_pcl_ros::RGBColorFilter"
          base_class_type="nodelet::Nodelet">
