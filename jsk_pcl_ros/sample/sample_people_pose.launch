@@ -1,0 +1,26 @@
+<launch>
+  <arg name="MANAGER" default="people_pose_manager" />
+
+  <arg name="CAMERA" default="camera" />
+  <arg name="IMAGE" default="image_rect_color" />
+  <arg name="DEPTH_SPACE" default="depth" />
+  <arg name="RGB" value="rgb" />
+
+  <arg name="INPUT_CLOUD" value="/$(arg CAMERA)/$(arg DEPTH_SPACE)/points" />
+  <arg name="INPUT_CAMERA_INFO" value="/$(arg CAMERA)/$(arg RGB)/camera_info" />
+  <arg name="INPUT_IMAGE" value="/$(arg CAMERA)/$(arg RGB)/$(arg IMAGE)" />
+
+  <node name="$(arg MANAGER)"
+        pkg="nodelet" type="nodelet"
+        args="manager"
+        output="screen"
+        />
+
+  <node name="people_pose"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_pcl_ros/PeoplePoseDetection $(arg MANAGER)">
+    <remap from="input/info" to="$(arg INPUT_CAMERA_INFO)" />
+    <remap from="input" to="$(arg INPUT_CLOUD)" />
+  </node>
+
+</launch>

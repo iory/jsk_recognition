@@ -50,10 +50,10 @@ namespace jsk_pcl_ros {
 
     //selecting tree files
     std::vector<std::string> tree_files;
-    tree_files.push_back("Data/forest1/tree_20.txt");
-    tree_files.push_back("Data/forest2/tree_20.txt");
-    tree_files.push_back("Data/forest3/tree_20.txt");
-    tree_files.push_back("Data/forest4/tree_20.txt");
+    tree_files.push_back(ros::package::getPath("openni_tracker") + std::string("/Data/forest1/tree_20.txt"));
+    tree_files.push_back(ros::package::getPath("openni_tracker") + std::string("/Data/forest2/tree_20.txt"));
+    tree_files.push_back(ros::package::getPath("openni_tracker") + std::string("/Data/forest3/tree_20.txt"));
+    // tree_files.push_back(ros::package::getPath("openni_tracker") + std::string("/Data/forest4/tree_20.txt"));
     int num_trees = (int)tree_files.size();
 
     rdf_ = boost::make_shared<RDFBodyPartsDetector::Ptr>(new RDFBodyPartsDetector(tree_files));
