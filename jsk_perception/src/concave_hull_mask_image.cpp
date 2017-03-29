@@ -63,6 +63,7 @@ namespace jsk_perception
     min_area_ = config.min_area;
     max_area_ = config.max_area;
     dilate_size_ = config.dilate_size;
+    apply_dilate_ = config.apply_dilate;
   }
 
   void ConcaveHullMaskImage::subscribe()
@@ -85,7 +86,12 @@ namespace jsk_perception
     cv::Mat dilate_img;
 
     // Dilate to fill holes
-    cv::dilate(mask, dilate_img, getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(dilate_size_, dilate_size_)));
+    if (apply_dilate_) {
+      cv::dilate(mask, dilate_img, getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(dilate_size_, dilate_size_)));
+    }
+    else {
+      dilate_img = mask;
+    }
 
     // Find contours
     std::vector<std::vector<cv::Point> > contours;

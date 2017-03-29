@@ -36,6 +36,10 @@ Parameters
 
   Maximum area of concave.
 
+* ``apply_dilate`` (Bool, default: ``True``)
+
+  Determine whether applying dilation.
+
 * ``dilate_size`` (Float, default: ``13``)
 
   Dilate size

@@ -68,6 +68,7 @@ namespace jsk_perception
     double min_area_;
     double max_area_;
     int dilate_size_;
+    bool apply_dilate_;
   private:
   };
 }
