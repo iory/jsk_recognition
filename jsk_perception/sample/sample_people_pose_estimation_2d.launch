@@ -6,23 +6,25 @@
   <node name="image_publisher"
         pkg="jsk_perception" type="image_publisher.py">
     <rosparam subst_value="true">
-      file_name: /home/iory/workspace/Realtime_Multi-Person_Pose_Estimation/testing/sample_image/ski.jpg
+      file_name: $(find jsk_perception)/sample/image/ski.jpg
+      rate: 30
     </rosparam>
   </node>
 
-  <node name="people_pose_estimation"
-        pkg="jsk_perception" type="people_pose_estimation.py"
+  <node name="people_pose_estimation_2d"
+        pkg="jsk_perception" type="people_pose_estimation_2d.py"
         output="screen">
     <remap from="~input" to="image_publisher/output" />
     <rosparam subst_value="true">
       gpu: $(arg GPU)
+      model_file: $(find jsk_perception)/trained_data/pose_iter_440000_chainer.pkl
     </rosparam>
   </node>
 
   <group if="$(arg gui)" >
     <node name="image_view0"
           pkg="image_view" type="image_view">
-      <remap from="image" to="people_pose_estimation/output" />
+      <remap from="image" to="people_pose_estimation_2d/output" />
     </node>
   </group>
 

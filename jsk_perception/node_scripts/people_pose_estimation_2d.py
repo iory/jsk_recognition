@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 
 import math
+import pickle
 
 import chainer
 from chainer import cuda
@@ -10,6 +11,7 @@ import cupy
 
 import cv2
 import matplotlib
+import pylab as plt
 import numpy as np
 import chainer.links.caffe
 import cv_bridge
@@ -74,12 +76,13 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
     def _load_chainer_model(self):
         # model_name = rospy.get_param('~model_name')
         # model_h5 = rospy.get_param('~model_h5')
-        model = dict(caffemodel="/home/iory/workspace/caffe_rtpose/model/coco/pose_iter_440000.caffemodel")
+        model_file = rospy.get_param('~model_file')
+        # model = dict(caffemodel="/home/iory/workspace/caffe_rtpose/model/coco/pose_iter_440000.caffemodel")
         # rospy.loginfo('Loading trained model: {0}'.format(model_h5))
         # S.load_hdf5(model_h5, self.model)
         # rospy.loginfo('Finished loading trained model: {0}'.format(model_h5))
         # self.func = chainer.functions.caffe.CaffeFunction(model['caffemodel'])
-        self.func = chainer.links.caffe.CaffeFunction(model['caffemodel'])
+        self.func = pickle.load(open(model_file, 'rb'))
         if self.gpu != -1:
             self.func.to_gpu(self.gpu)
 
@@ -96,8 +99,9 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
         pose_estimated_img = self.pose_estimate(img)
-        pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.float32))
+        pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
+        pose_estimated_msg.encoding = "bgr8"
         self.pub.publish(pose_estimated_msg)
 
     def pose_estimate(self, bgr):
@@ -114,31 +118,28 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                            dtype=np.float32)
 
         for scale in self.scales:
-            img = cv2.resize(bgr_img, (0, 0), fx=scale, fy=scale,
-                             interpolation=cv2.INTER_CUBIC)
-            padded_img, pad = padRightDownCorner(img, self.stride,
-                                                 self.pad_value)
-            x = np.transpose(np.float32(padded_img[..., None]),
-                             (3, 2, 0, 1)) / 256 - 0.5
+            img = cv2.resize(bgr_img, (0,0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            padded_img, pad = padRightDownCorner(img, self.stride, self.pad_value)
+            # for chainer
+            x = np.transpose(np.float32(padded_img[:,:,:,np.newaxis]), (3,2,0,1))/256 - 0.5
             if self.gpu != -1:
-                x = chainer.cuda.to_gpu(x, device=self.gpu)
-            x = chainer.Variable(x, volatile=True)
-            y = self.func(inputs={'image: x'},
+                x = chainer.cuda.to_gpu(x)
+            x = chainer.Variable(x)
+            y = self.func(inputs={'image': x},
                           outputs=['Mconv7_stage6_L2', 'Mconv7_stage6_L1'])
+            # extract outputs, resize, and remove padding
             y0 = F.resize_images(y[0], (184, 248))
-            heatmap = y0[:, :, :padded_img.shape[0] - pad[2],
-                         :padded_img.shape[1] - pad[3]]
-            heatmap = xp.transpose(xp.squeese(heatmap.data), (1, 2, 0))
+            heatmap = y0[:, :, :padded_img.shape[0]-pad[2], :padded_img.shape[1]-pad[3]]
+            heatmap = F.resize_images(heatmap, (bgr_img.shape[0], bgr_img.shape[1]))
+            heatmap = xp.transpose(xp.squeeze(heatmap.data), (1, 2, 0))
             y1 = F.resize_images(y[1], (184, 248))
-            paf = y1[:, :, :padded_img.shape[0] - pad[2],
-                     :padded_img.shape[1] - pad[3]]
+            paf = y1[:, :, :padded_img.shape[0]-pad[2], :padded_img.shape[1]-pad[3]]
             paf = F.resize_images(paf, (bgr_img.shape[0], bgr_img.shape[1]))
             paf = xp.transpose(xp.squeeze(paf.data), (1, 2, 0))
 
             coeff = 1.0 / len(self.scales)
             paf_avg += paf * coeff
             heatmap_avg += heatmap * coeff
-
         all_peaks = []
         peak_counter = 0
 
@@ -157,7 +158,10 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                        (heatmap_avg > self.thre1)
 
         for part in range(18):
-            peaks = xp.array(xp.nonzero(peaks_binary[..., part]),
+            # peaks = xp.array(xp.nonzero(peaks_binary[..., part]),
+            #                  dtype=np.int32)
+            tmp0, tmp1 = xp.nonzero(peaks_binary[...,part])
+            peaks = xp.array(zip(tmp1, tmp0),
                              dtype=np.int32)
             peaks_with_score_and_id = \
                 [xp.concatenate([xp.array(x, dtype=np.float32),
@@ -172,15 +176,19 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         connection_all = []
         mid_num = 10
         eps = 1e-8
-        score_mid = paf_avg[:,:,[[x-19 for x in self.map_idx[k]] for k in range(len(self.map_idx))]]
+        score_mid = paf_avg[:, :, [[x-19 for x in self.map_idx[k]] for k in range(len(self.map_idx))]]
         cands = np.array(all_peaks)[np.array(self.limb_sequence) - 1]
         candAs = cands[:, 0]
         candBs = cands[:, 1]
         nAs = np.array([len(candA) for candA in candAs])
         nBs = np.array([len(candB) for candB in candBs])
         target_indices = np.nonzero(np.logical_and(nAs != 0, nBs != 0))[0]
-        candB = [np.tile(np.array(chainer.cuda.to_cpu(candB), dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
-        candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA), dtype=np.float32), nB, axis=0).astype(np.float32) for candA, nB  in zip(candAs[target_indices], nBs[target_indices])]
+        if len(target_indices) == 0:
+            return bgr_img
+        candB = [np.tile(np.array(chainer.cuda.to_cpu(candB),
+                                  dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
+        candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA),
+                                    dtype=np.float32), nB, axis=0).astype(np.float32) for candA, nB  in zip(candAs[target_indices], nBs[target_indices])]
         vec = np.vstack(candB)[:,:2] - np.vstack(candA)[:,:2]
         vec = chainer.cuda.to_gpu(vec)
         norm = xp.sqrt(xp.sum(vec ** 2, axis=1)) + eps
