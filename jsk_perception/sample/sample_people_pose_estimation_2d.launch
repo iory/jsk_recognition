@@ -1,0 +1,29 @@
+<launch>
+
+  <arg name="gui" default="true" />
+  <arg name="GPU" default="0" />
+
+  <node name="image_publisher"
+        pkg="jsk_perception" type="image_publisher.py">
+    <rosparam subst_value="true">
+      file_name: /home/iory/workspace/Realtime_Multi-Person_Pose_Estimation/testing/sample_image/ski.jpg
+    </rosparam>
+  </node>
+
+  <node name="people_pose_estimation"
+        pkg="jsk_perception" type="people_pose_estimation.py"
+        output="screen">
+    <remap from="~input" to="image_publisher/output" />
+    <rosparam subst_value="true">
+      gpu: $(arg GPU)
+    </rosparam>
+  </node>
+
+  <group if="$(arg gui)" >
+    <node name="image_view0"
+          pkg="image_view" type="image_view">
+      <remap from="image" to="people_pose_estimation/output" />
+    </node>
+  </group>
+
+</launch>
