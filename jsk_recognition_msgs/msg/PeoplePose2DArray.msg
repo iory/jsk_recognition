@@ -1,1 +1,1 @@
-PeoplePose2d[] poses
+PeoplePose2D[] poses
