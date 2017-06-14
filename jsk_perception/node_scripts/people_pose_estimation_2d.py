@@ -350,6 +350,17 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         stickwidth = 4
 
         poses_msg = PeoplePose2DArray()
+        # for people_id, indices in enumerate(subset):
+        #     for index in indices:
+        #         if index == -1:
+        #             continue
+
+        #         pose_msg = PeoplePose2D()
+        #         pose_msg.id = index
+        #         pose_msg.x = mX
+        #         pose_msg.y = mY
+        #         pose_msg.string = self.index2limbname[index]
+        #         poses_msg.append(pose_msg)
         for i in range(17):
             for n in range(len(subset)):
                 index = subset[n][np.array(self.limb_sequence[i])-1]
@@ -366,12 +377,13 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
                 canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
-                pose_msg = PeoplePose2D()
-                pose_msg.id = index
-                pose_msg.x = mX
-                pose_msg.y = mY
-                pose_msg.string = self.index2limbname[index]
-                poses_msg.append(pose_msg)
+                for i in index:
+                    pose_msg = PeoplePose2D()
+                    pose_msg.id = i
+                    pose_msg.x = mX[i]
+                    pose_msg.y = mY[i]
+                    pose_msg.string = self.index2limbname[i]
+                    poses_msg.append(pose_msg)
         return canvas, poses_msg
 
 
