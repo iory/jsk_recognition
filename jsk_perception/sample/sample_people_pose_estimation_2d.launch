@@ -2,6 +2,7 @@
 
   <arg name="gui" default="true" />
   <arg name="GPU" default="0" />
+  <arg name="INPUT_IMAGE" default="image_publisher/output" />
 
   <node name="image_publisher"
         pkg="jsk_perception" type="image_publisher.py">
@@ -14,7 +15,7 @@
   <node name="people_pose_estimation_2d"
         pkg="jsk_perception" type="people_pose_estimation_2d.py"
         output="screen">
-    <remap from="~input" to="image_publisher/output" />
+    <remap from="~input" to="$(arg INPUT_IMAGE)" />
     <rosparam subst_value="true">
       gpu: $(arg GPU)
       model_file: $(find jsk_perception)/trained_data/pose_estimation_2d_chainermodel.pkl

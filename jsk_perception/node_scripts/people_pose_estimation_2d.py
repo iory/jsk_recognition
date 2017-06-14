@@ -126,7 +126,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
-        poses_msg.heapq = img_msg.header
+        poses_msg.header = img_msg.header
         self.pose_pub.publish(poses_msg)
         self.pub.publish(pose_estimated_msg)
 
@@ -210,7 +210,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         nBs = np.array([len(candB) for candB in candBs])
         target_indices = np.nonzero(np.logical_and(nAs != 0, nBs != 0))[0]
         if len(target_indices) == 0:
-            return bgr_img
+            return bgr_img, PeoplePose2DArray()
         candB = [np.tile(np.array(chainer.cuda.to_cpu(candB),
                                   dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
         candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA),
@@ -377,13 +377,14 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
                 canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
-                for i in index:
+                for order, j in enumerate(index):
+                    j = int(j)
                     pose_msg = PeoplePose2D()
-                    pose_msg.id = i
-                    pose_msg.x = mX[i]
-                    pose_msg.y = mY[i]
-                    pose_msg.string = self.index2limbname[i]
-                    poses_msg.append(pose_msg)
+                    pose_msg.id = n
+                    pose_msg.x = X[order]
+                    pose_msg.y = Y[order]
+                    pose_msg.limb = self.index2limbname[i]
+                    poses_msg.poses.append(pose_msg)
         return canvas, poses_msg
 
 
