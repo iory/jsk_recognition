@@ -18,8 +18,13 @@ import cv_bridge
 from jsk_topic_tools import ConnectionBasedTransport
 import rospy
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo
 from jsk_recognition_msgs.msg import PeoplePose2D
 from jsk_recognition_msgs.msg import PeoplePose2DArray
+from jsk_recognition_msgs.msg import PeoplePose
+from jsk_recognition_msgs.msg import PeoplePoseArray
+import message_filters
+from geometry_msgs.msg import Point32
 
 
 def padRightDownCorner(img, stride, padValue):
@@ -87,9 +92,11 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         self.thre1 = rospy.get_param('~thre1', 0.1)
         self.thre2 = rospy.get_param('~thre2', 0.05)
         self.gpu = rospy.get_param('~gpu', -1)  # -1 is cpu mode
+        self.with_depth = rospy.get_param('~with_depth', False)
         self._load_model()
         self.pub = self.advertise('~output', Image, queue_size=1)
-        self.pose_pub = self.advertise('~pose', PeoplePose2DArray, queue_size=1)
+        self.pose_2d_pub = self.advertise('~pose_2d', PeoplePose2DArray, queue_size=1)
+        self.pose_pub = self.advertise('~pose', PeoplePoseArray, queue_size=1)
 
     def _load_model(self):
         if self.backend == 'chainer':
@@ -111,23 +118,73 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             self.func.to_gpu(self.gpu)
 
     def subscribe(self):
-        sub_img = rospy.Subscriber(
-            '~input', Image, self._cb, queue_size=1, buff_size=2**24)
-        self.subs = [sub_img]
+        if self.with_depth:
+            queue_size = rospy.get_param('~queue_size', 10)
+            sub_img = message_filters.Subscriber(
+                '~input', Image, queue_size=1, buff_size=2**24)
+            sub_depth = message_filters.Subscriber(
+                '~input/depth', Image, queue_size=1, buff_size=2**24)
+            sub_info = message_filters.Subscriber(
+                '~input/info', CameraInfo, queue_size=1, buff_size=2**24)
+            self.subs = [sub_img, sub_depth, sub_info]
+            if rospy.get_param('~approximate_sync', True):
+                slop = rospy.get_param('~slop', 0.1)
+                sync = message_filters.ApproximateTimeSynchronizer(
+                    fs=self.subs, queue_size=queue_size, slop=slop)
+            else:
+                sync = message_filters.TimeSynchronizer(
+                    fs=self.subs, queue_size=queue_size)
+            sync.registerCallback(self._cb_with_depth)
+        else:
+            sub_img = rospy.Subscriber(
+                '~input', Image, self._cb, queue_size=1, buff_size=2**24)
+            self.subs = [sub_img]
 
     def unsubscribe(self):
         for sub in self.subs:
             sub.unregister()
 
-    def _cb(self, img_msg):
+    def _cb_with_depth(self, img_msg, depth_msg, camera_info_msg):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        pose_estimated_img, poses_msg = self.pose_estimate(img)
+        depth_img = br.imgmsg_to_cv2(depth_msg, desired_encoding=depth_msg.encoding)
+        pose_estimated_img, poses_msg, people_pose = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
         poses_msg.header = img_msg.header
-        self.pose_pub.publish(poses_msg)
+        pose_msg = PeoplePoseArray()
+
+        fx = camera_info_msg.K[0]
+        fy = camera_info_msg.K[4]
+        cx = camera_info_msg.K[2]
+        cy = camera_info_msg.K[5]
+        for person_pose in people_pose:
+            pose_msg = PeoplePose()
+            for pose in people_pose:
+                z = depth_img[pose.y, pose.x] * 0.001
+                x = (pose.x - cx) * z / fx
+                y = (pose.y - cy) * z / fy
+                pose_msg.limb_names.append(pose['limb'])
+                pose_msg.points.append(Point32(x=x,
+                                               y=y,
+                                               z=z))
+                pose_msg.points.append(pose_msg)
+        pose_msg.header = img_msg.header
+
+        self.pose_pub.publish(pose_msg)
+        self.pose_2d_pub.publish(poses_msg)
+        self.pub.publish(pose_estimated_msg)
+
+    def _cb(self, img_msg):
+        br = cv_bridge.CvBridge()
+        img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
+        pose_estimated_img, poses_msg, _ = self.pose_estimate(img)
+        pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
+        pose_estimated_msg.header = img_msg.header
+        pose_estimated_msg.encoding = "bgr8"
+        poses_msg.header = img_msg.header
+        self.pose_2d_pub.publish(poses_msg)
         self.pub.publish(pose_estimated_msg)
 
     def pose_estimate(self, bgr):
@@ -210,7 +267,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         nBs = np.array([len(candB) for candB in candBs])
         target_indices = np.nonzero(np.logical_and(nAs != 0, nBs != 0))[0]
         if len(target_indices) == 0:
-            return bgr_img, PeoplePose2DArray()
+            return bgr_img, PeoplePose2DArray(), None
         candB = [np.tile(np.array(chainer.cuda.to_cpu(candB),
                                   dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
         candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA),
@@ -361,6 +418,19 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         #         pose_msg.y = mY
         #         pose_msg.string = self.index2limbname[index]
         #         poses_msg.append(pose_msg)
+        people_pose = []
+        for person in subset:
+            person_pose = []
+            for i, limb_name in enumerate(self.index2limbname):
+                index = person[i]
+                Y = candidate[i, 0]
+                X = candidate[i, 1]
+                person_pose.append(dict(limb=limb_name,
+                                        x=X,
+                                        y=Y,))
+            people_pose.append(person_pose)
+
+
         for i in range(17):
             for n in range(len(subset)):
                 index = subset[n][np.array(self.limb_sequence[i])-1]
@@ -385,7 +455,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                     pose_msg.y = Y[order]
                     pose_msg.limb = self.index2limbname[i]
                     poses_msg.poses.append(pose_msg)
-        return canvas, poses_msg
+        return canvas, poses_msg, people_pose
 
 
 if __name__ == '__main__':
