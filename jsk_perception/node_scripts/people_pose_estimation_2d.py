@@ -161,8 +161,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         cy = camera_info_msg.K[5]
         for person_pose in people_pose:
             pose_msg = PeoplePose()
-            for pose in people_pose:
-                z = depth_img[pose.y, pose.x] * 0.001
+            for pose in person_pose:
+                z = depth_img[pose['y'], pose['x']] * 0.001
                 x = (pose.x - cx) * z / fx
                 y = (pose.y - cy) * z / fy
                 pose_msg.limb_names.append(pose['limb'])
