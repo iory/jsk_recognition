@@ -18,6 +18,8 @@ import cv_bridge
 from jsk_topic_tools import ConnectionBasedTransport
 import rospy
 from sensor_msgs.msg import Image
+from jsk_recognition_msgs.msg import PeoplePose2D
+from jsk_recognition_msgs.msg import PeoplePose2DArray
 
 
 def padRightDownCorner(img, stride, padValue):
@@ -55,6 +57,27 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                [47, 48], [49, 50], [53, 54], [51, 52], [55, 56], [37, 38],
                [45, 46]]
 
+    index2limbname = ["Nose",
+                      "Neck",
+                      "RShoulder",
+                      "RElbow",
+                      "RWrist",
+                      "LShoulder",
+                      "LElbow",
+                      "LWrist",
+                      "RHip",
+                      "RKnee",
+                      "RAnkle",
+                      "LHip",
+                      "LKnee",
+                      "LAnkle",
+                      "REye",
+                      "LEye",
+                      "REar",
+                      "LEar",
+                      "Bkg"]
+
+
     def __init__(self):
         super(self.__class__, self).__init__()
         self.backend = rospy.get_param('~backend', 'chainer')
@@ -66,6 +89,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         self.gpu = rospy.get_param('~gpu', -1)  # -1 is cpu mode
         self._load_model()
         self.pub = self.advertise('~output', Image, queue_size=1)
+        self.pose_pub = self.advertise('~pose', PeoplePose2DArray, queue_size=1)
 
     def _load_model(self):
         if self.backend == 'chainer':
@@ -98,10 +122,12 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
     def _cb(self, img_msg):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        pose_estimated_img = self.pose_estimate(img)
+        pose_estimated_img, poses_msg = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
+        poses_msg.heapq = img_msg.header
+        self.pose_pub.publish(poses_msg)
         self.pub.publish(pose_estimated_msg)
 
     def pose_estimate(self, bgr):
@@ -323,6 +349,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         # visualize 2
         stickwidth = 4
 
+        poses_msg = PeoplePose2DArray()
         for i in range(17):
             for n in range(len(subset)):
                 index = subset[n][np.array(self.limb_sequence[i])-1]
@@ -339,7 +366,13 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
                 canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
-        return canvas
+                pose_msg = PeoplePose2D()
+                pose_msg.id = index
+                pose_msg.x = mX
+                pose_msg.y = mY
+                pose_msg.string = self.index2limbname[index]
+                poses_msg.append(pose_msg)
+        return canvas, poses_msg
 
 
 if __name__ == '__main__':
