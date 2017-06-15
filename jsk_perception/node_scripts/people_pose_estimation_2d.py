@@ -268,130 +268,127 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         eps = 1e-8
         score_mid = paf_avg[:, :, [[x - 19 for x in self.map_idx[k]]
                                    for k in range(len(self.map_idx))]]
-        cands = np.array(all_peaks)[np.array(self.limb_sequence) - 1]
+
+        cands = np.array(all_peaks, dtype=object)[
+            np.array(self.limb_sequence, dtype=np.int32) - 1]
         candAs = cands[:, 0]
         candBs = cands[:, 1]
         nAs = np.array([len(candA) for candA in candAs])
         nBs = np.array([len(candB) for candB in candBs])
-        target_indices = np.nonzero(np.logical_and(nAs != 0, nBs != 0))[0]
+        target_indices = np.nonzero(xp.logical_and(nAs != 0, nBs != 0))[0]
         if len(target_indices) == 0:
             return bgr_img, PeoplePose2DArray(), []
-        candB = [np.tile(np.array(chainer.cuda.to_cpu(candB),
-                                  dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
-        candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA),
-                                    dtype=np.float32), nB, axis=0).astype(np.float32) for candA, nB in zip(candAs[target_indices], nBs[target_indices])]
-        vec = np.vstack(candB)[:, :2] - np.vstack(candA)[:, :2]
+
+        all_candidates_A = [np.repeat(np.array(tmp_candA, dtype=np.float32), nB, axis=0)
+                            for tmp_candA, nB in zip(candAs, nBs)]
+        all_candidates_B = [np.tile(np.array(tmp_candB, dtype=np.float32), (nA, 1))
+                            for tmp_candB, nA in zip(candBs, nAs)]
+
+        target_candidates_B = [all_candidates_B[index] for index in target_indices]
+        target_candidates_A = [all_candidates_A[index] for index in target_indices]
+
+        vec = np.vstack(target_candidates_B)[:, :2] - np.vstack(target_candidates_A)[:, :2]
         vec = chainer.cuda.to_gpu(vec)
         norm = xp.sqrt(xp.sum(vec ** 2, axis=1)) + eps
         vec = vec / norm[:, None]
-        startend = zip(np.round(np.mgrid[np.vstack(candA)[:, 1].reshape(-1, 1):np.vstack(candB)[:, 1].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
-                       np.round(np.mgrid[np.vstack(candA)[:, 0].reshape(-1, 1):np.vstack(
-                           candB)[:, 0].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
-                       np.concatenate([[[index] * mid_num for i in range(len(c))] for index, c in zip(target_indices, candB)]),)
+        start_end = zip(np.round(np.mgrid[np.vstack(target_candidates_A)[:, 1].reshape(-1, 1):np.vstack(target_candidates_B)[:, 1].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
+                        np.round(np.mgrid[np.vstack(target_candidates_A)[:, 0].reshape(-1, 1):np.vstack(
+                            target_candidates_B)[:, 0].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
+                        np.concatenate([[[index] * mid_num for i in range(len(c))] for index, c in zip(target_indices, target_candidates_B)]),)
 
-        v = score_mid[np.concatenate(
-            startend, axis=1).tolist()].reshape(-1, mid_num, 2)
-        score_midpts = xp.sum(
-            v * xp.repeat(vec, (mid_num), axis=0).reshape(-1, mid_num, 2), axis=2)
+        v = score_mid[np.concatenate(start_end, axis=1).tolist()].reshape(-1, mid_num, 2)
+        score_midpts = xp.sum(v * xp.repeat(vec, (mid_num),
+                                            axis=0).reshape(-1, mid_num, 2), axis=2)
         score_with_dist_prior = xp.sum(score_midpts, axis=1) / mid_num + \
-            xp.minimum(0.5 * bgr_img.shape[0] / norm - 1, xp.zeros_like(norm))
+                                                           xp.minimum(0.5 * bgr_img.shape[0] / norm - 1,
+                                                                      xp.zeros_like(norm, dtype=np.float32))
         c1 = xp.sum(score_midpts > self.thre2, axis=1) > 0.8 * mid_num
         c2 = score_with_dist_prior > 0.0
         criterion = xp.logical_and(c1, c2)
-        bins = np.concatenate(
-            [np.zeros(1), np.cumsum(nAs * nBs)]).astype(np.float32)
-        tmp_index = xp.nonzero(criterion)[0]
-        tmp_index = chainer.cuda.to_cpu(tmp_index)
-        # tmp_indexは有効な(c1 c2を満たす)index
-        k_s = np.digitize(tmp_index, bins)
-        k_s -= 1
-        i_s = (tmp_index - (bins[k_s])) // nBs[k_s]  # k_s-1
-        j_s = (tmp_index - (bins[k_s])) % nBs[k_s]  # k_s-1
 
-        ccandA = [xp.repeat(xp.array(tmp_candA, dtype=xp.float32), nB, axis=0)
-                  for tmp_candA, nB in zip(candAs, nBs)]
-        ccandB = [xp.tile(xp.array(tmp_candB, dtype=xp.float32), (nA, 1))
-                  for tmp_candB, nA in zip(candBs, nAs)]
+        indices_bins = np.cumsum(nAs * nBs)
+        indices_bins = np.concatenate([np.zeros(1), indices_bins]).astype(np.int32)
+        target_candidate_indices = xp.nonzero(criterion)[0]
+        target_candidate_indices = chainer.cuda.to_cpu(target_candidate_indices)
+
+        k_s = np.digitize(target_candidate_indices, indices_bins) - 1
+        i_s = (target_candidate_indices - (indices_bins[k_s])) // nBs[k_s]
+        j_s = (target_candidate_indices - (indices_bins[k_s])) % nBs[k_s]
+
         score_with_dist_prior = chainer.cuda.to_cpu(score_with_dist_prior)
         connection_candidate = np.concatenate([k_s.reshape(-1, 1),
                                                i_s.reshape(-1, 1),
                                                j_s.reshape(-1, 1),
                                                score_with_dist_prior[
-                                                   tmp_index][None, ].T,
-                                               (score_with_dist_prior[tmp_index][None, ] +
-                                                np.concatenate(candA)[tmp_index, 2] + np.concatenate(candB)[tmp_index, 2]).T], axis=1)
+                                                   target_candidate_indices][None, ].T,
+                                               (score_with_dist_prior[target_candidate_indices][None, ] +
+                                                np.concatenate(target_candidates_A)[target_candidate_indices, 2] + np.concatenate(target_candidates_B)[target_candidate_indices, 2]).T], axis=1)
 
-        connection_all = []
-        # connection_candidate = sorted(connection_candidate, cmp=mycmp, reverse=True)
         sorted_indices = np.argsort(
             connection_candidate[:, 0] * 100 - connection_candidate[:, 3])
+
+        connection_all = []
         for _ in range(0, 19):
             connection = np.zeros((0, 5), dtype=np.float32)
             connection_all.append(connection)
 
         for c_candidate in connection_candidate[sorted_indices]:
-            k, i, j, s = c_candidate[0:4]
-            k = int(k)
-            i = int(i)
-            j = int(j)
+            k, i, j = c_candidate[0:3].astype(np.int32)
+            score = c_candidate[3]
             if(len(connection_all[k]) >= min(nAs[k], nBs[k])):
                 continue
             i *= nBs[k]
             if(i not in connection_all[k][:, 3] and j not in connection_all[k][:, 4]):
                 connection_all[k] = np.vstack([connection_all[k], np.array(
-                    [ccandA[k][i][3], ccandB[k][j][3], float(s), i, j], dtype=np.float32)])
+                    [all_candidates_A[k][i][3], all_candidates_B[k][j][3], score, i, j], dtype=np.float32)])
 
-        subset = -1 * np.ones((0, 20), dtype=np.float32)
-        candidate = xp.array([item for sublist in all_peaks for item in sublist],
-                             dtype=np.float32)
-        special_k = []
+        subset = -1 * np.ones((0, 20))
+        candidate = np.array([item for sublist in all_peaks for item in sublist])
         for k in range(len(self.map_idx)):
-            if k not in special_k:
-                partAs = connection_all[k][:, 0]
-                partBs = connection_all[k][:, 1]
-                indexA, indexB = np.array(self.limb_sequence[k]) - 1
-                for i in range(len(connection_all[k])):  # = 1:size(temp,1)
-                    found = 0
-                    subset_idx = [-1, -1]
-                    for j in range(len(subset)):  # 1:size(subset,1):
-                        if subset[j][indexA] == float(partAs[i]) or subset[j][indexB] == float(partBs[i]):
-                            subset_idx[found] = j
-                            found += 1
+            partAs = connection_all[k][:, 0]
+            partBs = connection_all[k][:, 1]
+            indexA, indexB = np.array(self.limb_sequence[k]) - 1
+            for i in range(len(connection_all[k])):  # = 1:size(temp,1)
+                found = 0
+                subset_idx = [-1, -1]
+                for j in range(len(subset)):  # 1:size(subset,1):
+                    if subset[j][indexA] == float(partAs[i]) or subset[j][indexB] == float(partBs[i]):
+                        subset_idx[found] = j
+                        found += 1
 
-                    if found == 1:
-                        j = subset_idx[0]
-                        if(subset[j][indexB] != float(partBs[i])):
-                            subset[j][indexB] = partBs[i]
-                            subset[j][-1] += 1
-                            subset[
-                                j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
-                            subset[
-                                j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
-                    elif found == 2:  # if found 2 and disjoint, merge them
-                        j1, j2 = subset_idx
-                        print "found = 2"
-                        membership = ((subset[j1] >= 0).astype(
-                            int) + (subset[j2] >= 0).astype(int))[:-2]
-                        if len(np.nonzero(membership == 2)[0]) == 0:  # merge
-                            subset[j1][:-2] += (subset[j2][:-2] + 1)
-                            subset[j1][-2:] += subset[j2][-2:]
-                            subset[j1][-2] += connection_all[k][i][2]
-                            subset = np.delete(subset, j2, 0)
-                        else:  # as like found == 1
-                            subset[j1][indexB] = partBs[i]
-                            subset[j1][-1] += 1
-                            subset[
-                                j1][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
+                if found == 1:
+                    j = subset_idx[0]
+                    if(subset[j][indexB] != float(partBs[i])):
+                        subset[j][indexB] = partBs[i]
+                        subset[j][-1] += 1
+                        subset[
+                            j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
+                        subset[
+                            j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
+                elif found == 2:  # if found 2 and disjoint, merge them
+                    j1, j2 = subset_idx
+                    membership = ((subset[j1] >= 0).astype(
+                        int) + (subset[j2] >= 0).astype(int))[:-2]
+                    if len(np.nonzero(membership == 2)[0]) == 0:  # merge
+                        subset[j1][:-2] += (subset[j2][:-2] + 1)
+                        subset[j1][-2:] += subset[j2][-2:]
+                        subset[j1][-2] += connection_all[k][i][2]
+                        subset = np.delete(subset, j2, 0)
+                    else:  # as like found == 1
+                        subset[j1][indexB] = partBs[i]
+                        subset[j1][-1] += 1
+                        subset[
+                            j1][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
 
-                    # if find no partA in the subset, create a new subset
-                    elif not found and k < 17:
-                        row = -1 * np.ones(20)
-                        row[indexA] = partAs[i]
-                        row[indexB] = partBs[i]
-                        row[-1] = 2
-                        row[-2] = sum(candidate[connection_all[k][i,
-                                                                  :2].astype(int), 2]) + connection_all[k][i][2]
-                        subset = np.vstack([subset, row])
+                # if find no partA in the subset, create a new subset
+                elif not found and k < 17:
+                    row = -1 * np.ones(20)
+                    row[indexA] = partAs[i]
+                    row[indexB] = partBs[i]
+                    row[-1] = 2
+                    row[-2] = sum(candidate[connection_all[k]
+                                            [i, :2].astype(int), 2]) + connection_all[k][i][2]
+                    subset = np.vstack([subset, row])
 
         # delete some rows of subset which has few parts occur
         deleteIdx = []
@@ -400,20 +397,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
 
-        people_pose = []
-        for person in subset:
-            person_pose = []
-            for i, limb_name in enumerate(self.index2limbname):
-                index = int(person[i])
-                if index == -1 or index >= candidate.shape[0]:
-                    continue
-                X, Y = candidate[index]
-                person_pose.append(dict(limb=limb_name,
-                                        x=chainer.cuda.to_cpu(X),
-                                        y=chainer.cuda.to_cpu(Y),))
-            people_pose.append(person_pose)
-
-        # visualize skeleton
+        # visualize
         colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0],
                   [0, 255, 85], [0, 255, 170], [0, 255, 255], [
                       0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255],
@@ -455,6 +439,21 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                     pose_msg.y = Y[order]
                     pose_msg.limb = self.index2limbname[i]
                     poses_msg.poses.append(pose_msg)
+
+        people_pose = []
+        for person in subset:
+            person_pose = []
+            for i, limb_name in enumerate(self.index2limbname):
+                index = int(person[i])
+                if index == -1 or index >= candidate.shape[0]:
+                    continue
+                X, Y = candidate[index]
+                person_pose.append(dict(limb=limb_name,
+                                        x=chainer.cuda.to_cpu(X),
+                                        y=chainer.cuda.to_cpu(Y),))
+        people_pose.append(person_pose)
+
+        # visualize skeleton
         return canvas, poses_msg, people_pose
 
 
