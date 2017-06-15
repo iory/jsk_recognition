@@ -38,13 +38,13 @@ def padRightDownCorner(img, stride, padValue):
     pad[3] = 0 if (w % stride == 0) else stride - (w % stride)  # right
 
     img_padded = img
-    pad_up = np.tile(img_padded[0:1, :, :]*0 + padValue, (pad[0], 1, 1))
+    pad_up = np.tile(img_padded[0:1, :, :] * 0 + padValue, (pad[0], 1, 1))
     img_padded = np.concatenate((pad_up, img_padded), axis=0)
-    pad_left = np.tile(img_padded[:, 0:1, :]*0 + padValue, (1, pad[1], 1))
+    pad_left = np.tile(img_padded[:, 0:1, :] * 0 + padValue, (1, pad[1], 1))
     img_padded = np.concatenate((pad_left, img_padded), axis=1)
-    pad_down = np.tile(img_padded[-2:-1, :, :]*0 + padValue, (pad[2], 1, 1))
+    pad_down = np.tile(img_padded[-2:-1, :, :] * 0 + padValue, (pad[2], 1, 1))
     img_padded = np.concatenate((img_padded, pad_down), axis=0)
-    pad_right = np.tile(img_padded[:, -2:-1, :]*0 + padValue, (1, pad[3], 1))
+    pad_right = np.tile(img_padded[:, -2:-1, :] * 0 + padValue, (1, pad[3], 1))
     img_padded = np.concatenate((img_padded, pad_right), axis=1)
 
     return img_padded, pad
@@ -82,7 +82,6 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                       "LEar",
                       "Bkg"]
 
-
     def __init__(self):
         super(self.__class__, self).__init__()
         self.backend = rospy.get_param('~backend', 'chainer')
@@ -95,7 +94,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         self.with_depth = rospy.get_param('~with_depth', False)
         self._load_model()
         self.pub = self.advertise('~output', Image, queue_size=1)
-        self.pose_2d_pub = self.advertise('~pose_2d', PeoplePose2DArray, queue_size=1)
+        self.pose_2d_pub = self.advertise(
+            '~pose_2d', PeoplePose2DArray, queue_size=1)
         self.pose_pub = self.advertise('~pose', PeoplePoseArray, queue_size=1)
 
     def _load_model(self):
@@ -152,7 +152,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         depth_img = np.array(depth_img, dtype=np.float32)
 
         pose_estimated_img, poses_msg, people_pose = self.pose_estimate(img)
-        pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
+        pose_estimated_msg = br.cv2_to_imgmsg(
+            pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
         poses_msg.header = img_msg.header
@@ -184,7 +185,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
         pose_estimated_img, poses_msg, _ = self.pose_estimate(img)
-        pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
+        pose_estimated_msg = br.cv2_to_imgmsg(
+            pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
         poses_msg.header = img_msg.header
@@ -205,22 +207,30 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                            dtype=np.float32)
 
         for scale in self.scales:
-            img = cv2.resize(bgr_img, (0,0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-            padded_img, pad = padRightDownCorner(img, self.stride, self.pad_value)
+            img = cv2.resize(bgr_img, (0, 0), fx=scale,
+                             fy=scale, interpolation=cv2.INTER_CUBIC)
+            padded_img, pad = padRightDownCorner(
+                img, self.stride, self.pad_value)
             # for chainer
-            x = np.transpose(np.float32(padded_img[:,:,:,np.newaxis]), (3,2,0,1))/256 - 0.5
+            x = np.transpose(np.float32(
+                padded_img[:, :, :, np.newaxis]), (3, 2, 0, 1)) / 256 - 0.5
             if self.gpu != -1:
                 x = chainer.cuda.to_gpu(x)
             x = chainer.Variable(x)
             y = self.func(inputs={'image': x},
                           outputs=['Mconv7_stage6_L2', 'Mconv7_stage6_L1'])
             # extract outputs, resize, and remove padding
-            y0 = F.resize_images(y[0], (y[0].data.shape[2] * self.stride, y[0].data.shape[3] * self.stride))
-            heatmap = y0[:, :, :padded_img.shape[0]-pad[2], :padded_img.shape[1]-pad[3]]
-            heatmap = F.resize_images(heatmap, (bgr_img.shape[0], bgr_img.shape[1]))
+            y0 = F.resize_images(
+                y[0], (y[0].data.shape[2] * self.stride, y[0].data.shape[3] * self.stride))
+            heatmap = y0[:, :, :padded_img.shape[0] -
+                         pad[2], :padded_img.shape[1] - pad[3]]
+            heatmap = F.resize_images(
+                heatmap, (bgr_img.shape[0], bgr_img.shape[1]))
             heatmap = xp.transpose(xp.squeeze(heatmap.data), (1, 2, 0))
-            y1 = F.resize_images(y[1], (y[1].data.shape[2] * self.stride, y[1].data.shape[3] * self.stride))
-            paf = y1[:, :, :padded_img.shape[0]-pad[2], :padded_img.shape[1]-pad[3]]
+            y1 = F.resize_images(
+                y[1], (y[1].data.shape[2] * self.stride, y[1].data.shape[3] * self.stride))
+            paf = y1[:, :, :padded_img.shape[0] -
+                     pad[2], :padded_img.shape[1] - pad[3]]
             paf = F.resize_images(paf, (bgr_img.shape[0], bgr_img.shape[1]))
             paf = xp.transpose(xp.squeeze(paf.data), (1, 2, 0))
 
@@ -247,7 +257,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         for part in range(18):
             # peaks = xp.array(xp.nonzero(peaks_binary[..., part]),
             #                  dtype=np.int32)
-            tmp0, tmp1 = xp.nonzero(peaks_binary[...,part])
+            tmp0, tmp1 = xp.nonzero(peaks_binary[..., part])
             peaks = xp.array(zip(tmp1, tmp0),
                              dtype=np.int32)
             peaks_with_score_and_id = \
@@ -263,7 +273,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         connection_all = []
         mid_num = 10
         eps = 1e-8
-        score_mid = paf_avg[:, :, [[x-19 for x in self.map_idx[k]] for k in range(len(self.map_idx))]]
+        score_mid = paf_avg[:, :, [[x - 19 for x in self.map_idx[k]]
+                                   for k in range(len(self.map_idx))]]
         cands = np.array(all_peaks)[np.array(self.limb_sequence) - 1]
         candAs = cands[:, 0]
         candBs = cands[:, 1]
@@ -275,46 +286,54 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         candB = [np.tile(np.array(chainer.cuda.to_cpu(candB),
                                   dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
         candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA),
-                                    dtype=np.float32), nB, axis=0).astype(np.float32) for candA, nB  in zip(candAs[target_indices], nBs[target_indices])]
-        vec = np.vstack(candB)[:,:2] - np.vstack(candA)[:,:2]
+                                    dtype=np.float32), nB, axis=0).astype(np.float32) for candA, nB in zip(candAs[target_indices], nBs[target_indices])]
+        vec = np.vstack(candB)[:, :2] - np.vstack(candA)[:, :2]
         vec = chainer.cuda.to_gpu(vec)
         norm = xp.sqrt(xp.sum(vec ** 2, axis=1)) + eps
         vec = vec / norm[:, None]
-        startend = zip(np.round(np.mgrid[np.vstack(candA)[:,1].reshape(-1, 1):np.vstack(candB)[:,1].reshape(-1, 1):(mid_num*1j)]).astype(np.int32),
-                    np.round(np.mgrid[np.vstack(candA)[:,0].reshape(-1, 1):np.vstack(candB)[:,0].reshape(-1, 1):(mid_num*1j)]).astype(np.int32),
-                    np.concatenate([[[index] * mid_num for i in range(len(c))] for index, c in zip(target_indices, candB)]),)
+        startend = zip(np.round(np.mgrid[np.vstack(candA)[:, 1].reshape(-1, 1):np.vstack(candB)[:, 1].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
+                       np.round(np.mgrid[np.vstack(candA)[:, 0].reshape(-1, 1):np.vstack(
+                           candB)[:, 0].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
+                       np.concatenate([[[index] * mid_num for i in range(len(c))] for index, c in zip(target_indices, candB)]),)
 
-        v = score_mid[np.concatenate(startend, axis=1).tolist()].reshape(-1, mid_num, 2)
-        score_midpts = xp.sum(v * xp.repeat(vec, (mid_num), axis=0).reshape(-1, mid_num, 2), axis=2)
+        v = score_mid[np.concatenate(
+            startend, axis=1).tolist()].reshape(-1, mid_num, 2)
+        score_midpts = xp.sum(
+            v * xp.repeat(vec, (mid_num), axis=0).reshape(-1, mid_num, 2), axis=2)
         score_with_dist_prior = xp.sum(score_midpts, axis=1) / mid_num + \
-                                                        xp.minimum(0.5 * bgr_img.shape[0] / norm - 1, xp.zeros_like(norm))
+            xp.minimum(0.5 * bgr_img.shape[0] / norm - 1, xp.zeros_like(norm))
         c1 = xp.sum(score_midpts > self.thre2, axis=1) > 0.8 * mid_num
         c2 = score_with_dist_prior > 0.0
         criterion = xp.logical_and(c1, c2)
-        bins = np.concatenate([np.zeros(1), np.cumsum(nAs * nBs)]).astype(np.float32)
+        bins = np.concatenate(
+            [np.zeros(1), np.cumsum(nAs * nBs)]).astype(np.float32)
         tmp_index = xp.nonzero(criterion)[0]
         tmp_index = chainer.cuda.to_cpu(tmp_index)
         # tmp_indexは有効な(c1 c2を満たす)index
         k_s = np.digitize(tmp_index, bins)
         k_s -= 1
-        i_s = (tmp_index - (bins[k_s])) // nBs[k_s] # k_s-1
-        j_s = (tmp_index - (bins[k_s])) % nBs[k_s] # k_s-1
+        i_s = (tmp_index - (bins[k_s])) // nBs[k_s]  # k_s-1
+        j_s = (tmp_index - (bins[k_s])) % nBs[k_s]  # k_s-1
 
-        ccandA = [xp.repeat(xp.array(tmp_candA, dtype=xp.float32), nB, axis=0) for tmp_candA, nB  in zip(candAs, nBs)]
-        ccandB = [xp.tile(xp.array(tmp_candB, dtype=xp.float32), (nA, 1)) for tmp_candB, nA in zip(candBs, nAs)]
+        ccandA = [xp.repeat(xp.array(tmp_candA, dtype=xp.float32), nB, axis=0)
+                  for tmp_candA, nB in zip(candAs, nBs)]
+        ccandB = [xp.tile(xp.array(tmp_candB, dtype=xp.float32), (nA, 1))
+                  for tmp_candB, nA in zip(candBs, nAs)]
         score_with_dist_prior = chainer.cuda.to_cpu(score_with_dist_prior)
         connection_candidate = np.concatenate([k_s.reshape(-1, 1),
-                                            i_s.reshape(-1, 1),
-                                            j_s.reshape(-1, 1),
-                                            score_with_dist_prior[tmp_index][None,].T,
-                                            (score_with_dist_prior[tmp_index][None,] + \
+                                               i_s.reshape(-1, 1),
+                                               j_s.reshape(-1, 1),
+                                               score_with_dist_prior[
+                                                   tmp_index][None, ].T,
+                                               (score_with_dist_prior[tmp_index][None, ] +
                                                 np.concatenate(candA)[tmp_index, 2] + np.concatenate(candB)[tmp_index, 2]).T], axis=1)
 
         connection_all = []
         # connection_candidate = sorted(connection_candidate, cmp=mycmp, reverse=True)
-        sorted_indices = np.argsort(connection_candidate[:, 0] * 100 - connection_candidate[:, 3])
+        sorted_indices = np.argsort(
+            connection_candidate[:, 0] * 100 - connection_candidate[:, 3])
         for _ in range(0, 19):
-            connection = np.zeros((0,5), dtype=np.float32)
+            connection = np.zeros((0, 5), dtype=np.float32)
             connection_all.append(connection)
 
         for c_candidate in connection_candidate[sorted_indices]:
@@ -325,8 +344,9 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             if(len(connection_all[k]) >= min(nAs[k], nBs[k])):
                 continue
             i *= nBs[k]
-            if(i not in connection_all[k][:,3] and j not in connection_all[k][:,4]):
-                connection_all[k] = np.vstack([connection_all[k], np.array([ccandA[k][i][3], ccandB[k][j][3], float(s), i, j], dtype=np.float32)])
+            if(i not in connection_all[k][:, 3] and j not in connection_all[k][:, 4]):
+                connection_all[k] = np.vstack([connection_all[k], np.array(
+                    [ccandA[k][i][3], ccandB[k][j][3], float(s), i, j], dtype=np.float32)])
 
         subset = -1 * np.ones((0, 20), dtype=np.float32)
         candidate = xp.array([item for sublist in all_peaks for item in sublist],
@@ -334,13 +354,13 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         special_k = []
         for k in range(len(self.map_idx)):
             if k not in special_k:
-                partAs = connection_all[k][:,0]
-                partBs = connection_all[k][:,1]
+                partAs = connection_all[k][:, 0]
+                partBs = connection_all[k][:, 1]
                 indexA, indexB = np.array(self.limb_sequence[k]) - 1
-                for i in range(len(connection_all[k])): #= 1:size(temp,1)
+                for i in range(len(connection_all[k])):  # = 1:size(temp,1)
                     found = 0
                     subset_idx = [-1, -1]
-                    for j in range(len(subset)): #1:size(subset,1):
+                    for j in range(len(subset)):  # 1:size(subset,1):
                         if subset[j][indexA] == float(partAs[i]) or subset[j][indexB] == float(partBs[i]):
                             subset_idx[found] = j
                             found += 1
@@ -350,21 +370,25 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                         if(subset[j][indexB] != float(partBs[i])):
                             subset[j][indexB] = partBs[i]
                             subset[j][-1] += 1
-                            subset[j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
-                            subset[j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
-                    elif found == 2: # if found 2 and disjoint, merge them
+                            subset[
+                                j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
+                            subset[
+                                j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
+                    elif found == 2:  # if found 2 and disjoint, merge them
                         j1, j2 = subset_idx
                         print "found = 2"
-                        membership = ((subset[j1]>=0).astype(int) + (subset[j2]>=0).astype(int))[:-2]
-                        if len(np.nonzero(membership == 2)[0]) == 0: #merge
+                        membership = ((subset[j1] >= 0).astype(
+                            int) + (subset[j2] >= 0).astype(int))[:-2]
+                        if len(np.nonzero(membership == 2)[0]) == 0:  # merge
                             subset[j1][:-2] += (subset[j2][:-2] + 1)
                             subset[j1][-2:] += subset[j2][-2:]
                             subset[j1][-2] += connection_all[k][i][2]
                             subset = np.delete(subset, j2, 0)
-                        else: # as like found == 1
+                        else:  # as like found == 1
                             subset[j1][indexB] = partBs[i]
                             subset[j1][-1] += 1
-                            subset[j1][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
+                            subset[
+                                j1][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
 
                     # if find no partA in the subset, create a new subset
                     elif not found and k < 17:
@@ -372,28 +396,31 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                         row[indexA] = partAs[i]
                         row[indexB] = partBs[i]
                         row[-1] = 2
-                        row[-2] = sum(candidate[connection_all[k][i,:2].astype(int), 2]) + connection_all[k][i][2]
+                        row[-2] = sum(candidate[connection_all[k][i,
+                                                                  :2].astype(int), 2]) + connection_all[k][i][2]
                         subset = np.vstack([subset, row])
 
         # delete some rows of subset which has few parts occur
-        deleteIdx = [];
+        deleteIdx = []
         for i in range(len(subset)):
-            if subset[i][-1] < 4 or subset[i][-2]/subset[i][-1] < 0.4:
+            if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
 
         # visualize
-        colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
-                [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255], \
-                [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+        colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0],
+                  [0, 255, 85], [0, 255, 170], [0, 255, 255], [
+                      0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255],
+                  [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
         cmap = matplotlib.cm.get_cmap('hsv')
 
         canvas = bgr_img[:]
         for i in range(18):
-            rgba = np.array(cmap(1 - i/18. - 1./36))
+            rgba = np.array(cmap(1 - i / 18. - 1. / 36))
             rgba[0:3] *= 255
             for j in range(len(all_peaks[i])):
-                cv2.circle(canvas, (int(all_peaks[i][j][0]), int(all_peaks[i][j][1])), 4, colors[i], thickness=-1)
+                cv2.circle(canvas, (int(all_peaks[i][j][0]), int(
+                    all_peaks[i][j][1])), 4, colors[i], thickness=-1)
 
         # visualize 2
         stickwidth = 4
@@ -437,10 +464,9 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             #                             y=chainer.cuda.to_cpu(Y[0]),))
             people_pose.append(person_pose)
 
-
         for i in range(17):
             for n in range(len(subset)):
-                index = subset[n][np.array(self.limb_sequence[i])-1]
+                index = subset[n][np.array(self.limb_sequence[i]) - 1]
                 if -1 in index:
                     continue
                 cur_canvas = canvas.copy()
@@ -450,7 +476,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 mY = np.mean(Y)
                 length = ((X[0] - X[1]) ** 2 + (Y[0] - Y[1]) ** 2) ** 0.5
                 angle = math.degrees(math.atan2(X[0] - X[1], Y[0] - Y[1]))
-                polygon = cv2.ellipse2Poly((int(mY),int(mX)), (int(length/2), stickwidth), int(angle), 0, 360, 1)
+                polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(
+                    length / 2), stickwidth), int(angle), 0, 360, 1)
                 cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
                 canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
