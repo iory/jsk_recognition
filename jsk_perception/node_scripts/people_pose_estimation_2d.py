@@ -147,13 +147,13 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
     def _cb_with_depth(self, img_msg, depth_msg, camera_info_msg):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        depth_img = br.imgmsg_to_cv2(depth_msg, desired_encoding=depth_msg.encoding)
+        depth_img = br.imgmsg_to_cv2(depth_msg, desired_encoding='8UC1')
         pose_estimated_img, poses_msg, people_pose = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
         poses_msg.header = img_msg.header
-        pose_msg = PeoplePoseArray()
+        people_pose_msg = PeoplePoseArray()
 
         fx = camera_info_msg.K[0]
         fy = camera_info_msg.K[4]
@@ -162,17 +162,18 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         for person_pose in people_pose:
             pose_msg = PeoplePose()
             for pose in person_pose:
-                z = depth_img[pose['y'], pose['x']] * 0.001
-                x = (pose.x - cx) * z / fx
-                y = (pose.y - cy) * z / fy
+                # rospy.loginfo("{} {} {}".format(int(pose['y']), int(pose['x']), depth_img[int(pose['y']), int(pose['x'])]))
+                z = depth_img[int(pose['y']), int(pose['x'])]
+                x = (pose['x'] - cx) * z / fx
+                y = (pose['y'] - cy) * z / fy
                 pose_msg.limb_names.append(pose['limb'])
                 pose_msg.points.append(Point32(x=x,
                                                y=y,
                                                z=z))
-                pose_msg.points.append(pose_msg)
-        pose_msg.header = img_msg.header
+                people_pose_msg.poses.append(pose_msg)
+        people_pose_msg.header = img_msg.header
 
-        self.pose_pub.publish(pose_msg)
+        self.pose_pub.publish(people_pose_msg)
         self.pose_2d_pub.publish(poses_msg)
         self.pub.publish(pose_estimated_msg)
 
@@ -211,11 +212,11 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             y = self.func(inputs={'image': x},
                           outputs=['Mconv7_stage6_L2', 'Mconv7_stage6_L1'])
             # extract outputs, resize, and remove padding
-            y0 = F.resize_images(y[0], (184, 248))
+            y0 = F.resize_images(y[0], (y[0].data.shape[2] * self.stride, y[0].data.shape[3] * self.stride))
             heatmap = y0[:, :, :padded_img.shape[0]-pad[2], :padded_img.shape[1]-pad[3]]
             heatmap = F.resize_images(heatmap, (bgr_img.shape[0], bgr_img.shape[1]))
             heatmap = xp.transpose(xp.squeeze(heatmap.data), (1, 2, 0))
-            y1 = F.resize_images(y[1], (184, 248))
+            y1 = F.resize_images(y[1], (y[1].data.shape[2] * self.stride, y[1].data.shape[3] * self.stride))
             paf = y1[:, :, :padded_img.shape[0]-pad[2], :padded_img.shape[1]-pad[3]]
             paf = F.resize_images(paf, (bgr_img.shape[0], bgr_img.shape[1]))
             paf = xp.transpose(xp.squeeze(paf.data), (1, 2, 0))
@@ -267,7 +268,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         nBs = np.array([len(candB) for candB in candBs])
         target_indices = np.nonzero(np.logical_and(nAs != 0, nBs != 0))[0]
         if len(target_indices) == 0:
-            return bgr_img, PeoplePose2DArray(), None
+            return bgr_img, PeoplePose2DArray(), []
         candB = [np.tile(np.array(chainer.cuda.to_cpu(candB),
                                   dtype=np.float32), (nA, 1)).astype(np.float32) for candB, nA in zip(candBs[target_indices], nAs[target_indices])]
         candA = [np.repeat(np.array(chainer.cuda.to_cpu(candA),
@@ -306,26 +307,14 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                                             (score_with_dist_prior[tmp_index][None,] + \
                                                 np.concatenate(candA)[tmp_index, 2] + np.concatenate(candB)[tmp_index, 2]).T], axis=1)
 
-        def mycmp(x, y):
-            if x[0] > y[0]:
-                return -1
-            elif x[0] == y[0]:
-                if x[3] > y[3]:
-                    return 1
-                elif x[3] == y[3]:
-                    return 0
-                else:
-                    return -1
-            else:
-                return 1
-
         connection_all = []
-        connection_candidate = sorted(connection_candidate, cmp=mycmp, reverse=True)
+        # connection_candidate = sorted(connection_candidate, cmp=mycmp, reverse=True)
+        sorted_indices = np.argsort(connection_candidate[:, 0] * 100 - connection_candidate[:, 3])
         for _ in range(0, 19):
             connection = np.zeros((0,5), dtype=np.float32)
             connection_all.append(connection)
 
-        for c_candidate in connection_candidate:
+        for c_candidate in connection_candidate[sorted_indices]:
             k, i, j, s = c_candidate[0:4]
             k = int(k)
             i = int(i)
@@ -419,15 +408,19 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         #         pose_msg.string = self.index2limbname[index]
         #         poses_msg.append(pose_msg)
         people_pose = []
+        # rospy.loginfo("{}".format([len(s) for s in subset]))
         for person in subset:
             person_pose = []
+            # rospy.loginfo("person = {}".format(person))
             for i, limb_name in enumerate(self.index2limbname):
-                index = person[i]
-                Y = candidate[i, 0]
-                X = candidate[i, 1]
+                index = person[np.array(self.limb_sequence[i])-1]
+                if -1 in index:
+                    continue
+                Y = candidate[index.astype(np.int32), 0]
+                X = candidate[index.astype(np.int32), 1]
                 person_pose.append(dict(limb=limb_name,
-                                        x=X,
-                                        y=Y,))
+                                        x=chainer.cuda.to_cpu(X[0]),
+                                        y=chainer.cuda.to_cpu(Y[0]),))
             people_pose.append(person_pose)
 
 
