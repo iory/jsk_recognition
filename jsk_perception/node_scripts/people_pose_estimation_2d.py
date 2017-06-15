@@ -211,7 +211,6 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                              fy=scale, interpolation=cv2.INTER_CUBIC)
             padded_img, pad = padRightDownCorner(
                 img, self.stride, self.pad_value)
-            # for chainer
             x = np.transpose(np.float32(
                 padded_img[:, :, :, np.newaxis]), (3, 2, 0, 1)) / 256 - 0.5
             if self.gpu != -1:
@@ -219,6 +218,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             x = chainer.Variable(x)
             y = self.func(inputs={'image': x},
                           outputs=['Mconv7_stage6_L2', 'Mconv7_stage6_L1'])
+
             # extract outputs, resize, and remove padding
             y0 = F.resize_images(
                 y[0], (y[0].data.shape[2] * self.stride, y[0].data.shape[3] * self.stride))
@@ -237,8 +237,6 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             coeff = 1.0 / len(self.scales)
             paf_avg += paf * coeff
             heatmap_avg += heatmap * coeff
-        all_peaks = []
-        peak_counter = 0
 
         heatmav_left = xp.zeros_like(heatmap_avg)
         heatmav_left[1:, :] = heatmap_avg[:-1, :]
@@ -254,21 +252,16 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                        (heatmap_avg >= heatmav_down) & \
                        (heatmap_avg > self.thre1)
 
-        for part in range(18):
-            # peaks = xp.array(xp.nonzero(peaks_binary[..., part]),
-            #                  dtype=np.int32)
-            tmp0, tmp1 = xp.nonzero(peaks_binary[..., part])
-            peaks = xp.array(zip(tmp1, tmp0),
-                             dtype=np.int32)
-            peaks_with_score_and_id = \
-                [xp.concatenate([xp.array(x, dtype=np.float32),
-                                 xp.array([heatmap_avg[x[0], x[1], part]],
-                                          dtype=np.float32),
-                                 xp.array([id_value], dtype=np.float32)])
-                 for id_value, x in enumerate(peaks, peak_counter)]
-            all_peaks.append(xp.array(peaks_with_score_and_id,
-                                      dtype=np.float32))
-            peak_counter += len(peaks)
+        peaks = xp.array(xp.nonzero(peaks_binary[..., :18]), dtype=np.int32).T
+        peak_counter = peaks.shape[0]
+        all_peaks = xp.zeros((peak_counter, 4), dtype=np.float32)
+        all_peaks[:, 0] = peaks[:, 1]
+        all_peaks[:, 1] = peaks[:, 0]
+        all_peaks[:, 2] = heatmap_avg[peaks.T.tolist()]
+        peaks_order = peaks[..., 2]
+        all_peaks = all_peaks[peaks_order]
+        all_peaks[:, 3] = xp.arange(peak_counter, dtype=np.float32)
+        all_peaks = xp.split(all_peaks, xp.cumsum(xp.bincount(peaks_order)))
 
         connection_all = []
         mid_num = 10
@@ -407,7 +400,20 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
 
-        # visualize
+        people_pose = []
+        for person in subset:
+            person_pose = []
+            for i, limb_name in enumerate(self.index2limbname):
+                index = int(person[i])
+                if index == -1 or index >= candidate.shape[0]:
+                    continue
+                X, Y = candidate[index]
+                person_pose.append(dict(limb=limb_name,
+                                        x=chainer.cuda.to_cpu(X),
+                                        y=chainer.cuda.to_cpu(Y),))
+            people_pose.append(person_pose)
+
+        # visualize skeleton
         colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0],
                   [0, 255, 85], [0, 255, 170], [0, 255, 255], [
                       0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255],
@@ -422,48 +428,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 cv2.circle(canvas, (int(all_peaks[i][j][0]), int(
                     all_peaks[i][j][1])), 4, colors[i], thickness=-1)
 
-        # visualize 2
-        stickwidth = 4
-
         poses_msg = PeoplePose2DArray()
-        # for people_id, indices in enumerate(subset):
-        #     for index in indices:
-        #         if index == -1:
-        #             continue
-
-        #         pose_msg = PeoplePose2D()
-        #         pose_msg.id = index
-        #         pose_msg.x = mX
-        #         pose_msg.y = mY
-        #         pose_msg.string = self.index2limbname[index]
-        #         poses_msg.append(pose_msg)
-        people_pose = []
-        # rospy.loginfo("{}".format([len(s) for s in subset]))
-        for person in subset:
-            person_pose = []
-            for i, limb_name in enumerate(self.index2limbname):
-                index = int(person[i])
-                if index == -1:
-                    continue
-
-                if index >= candidate.shape[0]:
-                    continue
-                Y = candidate[index, 1]
-                X = candidate[index, 0]
-                person_pose.append(dict(limb=limb_name,
-                                        x=chainer.cuda.to_cpu(X),
-                                        y=chainer.cuda.to_cpu(Y),))
-            # for i, limb_name in enumerate(self.index2limbname):
-            #     index = person[np.array(self.limb_sequence[i])-1]
-            #     if -1 in index:
-            #         continue
-            #     Y = candidate[index.astype(np.int32), 1]
-            #     X = candidate[index.astype(np.int32), 0]
-            #     person_pose.append(dict(limb=limb_name,
-            #                             x=chainer.cuda.to_cpu(X[0]),
-            #                             y=chainer.cuda.to_cpu(Y[0]),))
-            people_pose.append(person_pose)
-
+        stickwidth = 4
         for i in range(17):
             for n in range(len(subset)):
                 index = subset[n][np.array(self.limb_sequence[i]) - 1]
