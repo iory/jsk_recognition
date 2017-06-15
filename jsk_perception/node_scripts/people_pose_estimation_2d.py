@@ -147,7 +147,10 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
     def _cb_with_depth(self, img_msg, depth_msg, camera_info_msg):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        depth_img = br.imgmsg_to_cv2(depth_msg, desired_encoding='8UC1')
+        depth_img = br.imgmsg_to_cv2(depth_msg, 'passthrough')
+        # depth_img = np.squeeze(np.array(depth_img, dtype=np.float32))
+        depth_img = np.array(depth_img, dtype=np.float32)
+
         pose_estimated_img, poses_msg, people_pose = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
@@ -163,7 +166,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             pose_msg = PeoplePose()
             for pose in person_pose:
                 # rospy.loginfo("{} {} {}".format(int(pose['y']), int(pose['x']), depth_img[int(pose['y']), int(pose['x'])]))
-                z = depth_img[int(pose['y']), int(pose['x'])]
+                z = float(depth_img[int(pose['y'])][int(pose['x'])])
                 x = (pose['x'] - cx) * z / fx
                 y = (pose['y'] - cy) * z / fy
                 pose_msg.limb_names.append(pose['limb'])
@@ -411,16 +414,27 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         # rospy.loginfo("{}".format([len(s) for s in subset]))
         for person in subset:
             person_pose = []
-            # rospy.loginfo("person = {}".format(person))
             for i, limb_name in enumerate(self.index2limbname):
-                index = person[np.array(self.limb_sequence[i])-1]
-                if -1 in index:
+                index = int(person[i])
+                if index == -1:
                     continue
-                Y = candidate[index.astype(np.int32), 0]
-                X = candidate[index.astype(np.int32), 1]
+
+                if index >= candidate.shape[0]:
+                    continue
+                Y = candidate[index, 1]
+                X = candidate[index, 0]
                 person_pose.append(dict(limb=limb_name,
-                                        x=chainer.cuda.to_cpu(X[0]),
-                                        y=chainer.cuda.to_cpu(Y[0]),))
+                                        x=chainer.cuda.to_cpu(X),
+                                        y=chainer.cuda.to_cpu(Y),))
+            # for i, limb_name in enumerate(self.index2limbname):
+            #     index = person[np.array(self.limb_sequence[i])-1]
+            #     if -1 in index:
+            #         continue
+            #     Y = candidate[index.astype(np.int32), 1]
+            #     X = candidate[index.astype(np.int32), 0]
+            #     person_pose.append(dict(limb=limb_name,
+            #                             x=chainer.cuda.to_cpu(X[0]),
+            #                             y=chainer.cuda.to_cpu(Y[0]),))
             people_pose.append(person_pose)
 
 
