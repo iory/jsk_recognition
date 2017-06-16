@@ -464,6 +464,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                                                    y=Y,))
             people_joint_positions.append(person_joint_positions)
 
+        return people_joint_positions
+
 
 if __name__ == '__main__':
     rospy.init_node('people_pose_estimation_2d')
