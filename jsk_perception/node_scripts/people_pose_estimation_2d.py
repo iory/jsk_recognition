@@ -5,23 +5,23 @@ import math
 import pickle
 
 import chainer
-from chainer import cuda
 import chainer.functions as F
-
+import chainer.links.caffe
+from chainer import cuda
 import cv2
 import matplotlib
 import numpy as np
-import chainer.links.caffe
 import pylab as plt  # NOQA
+
 import cv_bridge
-from jsk_topic_tools import ConnectionBasedTransport
+import message_filters
 import rospy
-from sensor_msgs.msg import Image
-from sensor_msgs.msg import CameraInfo
+from jsk_topic_tools import ConnectionBasedTransport
+from geometry_msgs.msg import Point32
 from jsk_recognition_msgs.msg import PeoplePose
 from jsk_recognition_msgs.msg import PeoplePoseArray
-import message_filters
-from geometry_msgs.msg import Point32
+from sensor_msgs.msg import CameraInfo
+from sensor_msgs.msg import Image
 
 
 def padRightDownCorner(img, stride, padValue):
@@ -163,6 +163,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             pose_msg = PeoplePose()
             for joint_pos in person_joint_positions:
                 z = float(depth_img[int(joint_pos['y'])][int(joint_pos['x'])])
+                if np.isnan(z):
+                    continue
                 x = (joint_pos['x'] - cx) * z / fx
                 y = (joint_pos['y'] - cy) * z / fy
                 pose_msg.limb_names.append(joint_pos['limb'])
