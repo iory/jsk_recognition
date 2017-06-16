@@ -12,6 +12,7 @@ import cv2
 import matplotlib
 import numpy as np
 import chainer.links.caffe
+import pylab as plt  # NOQA
 import cv_bridge
 from jsk_topic_tools import ConnectionBasedTransport
 import rospy
