@@ -259,10 +259,11 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         all_peaks[:, 1] = peaks[:, 0]
         all_peaks[:, 2] = heatmap_avg[peaks.T.tolist()]
         peaks_order = peaks[..., 2]
-        all_peaks = all_peaks[peaks_order]
+        all_peaks = all_peaks[xp.argsort(peaks_order)]
         all_peaks[:, 3] = xp.arange(peak_counter, dtype=np.float32)
-        all_peaks = xp.split(all_peaks, xp.cumsum(xp.bincount(peaks_order)))
-
+        all_peaks = chainer.cuda.to_cpu(all_peaks)
+        peaks_order = chainer.cuda.to_cpu(peaks_order)
+        all_peaks = np.split(all_peaks, np.cumsum(np.bincount(peaks_order, minlength=18)))
         connection_all = []
         mid_num = 10
         eps = 1e-8
@@ -416,7 +417,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         stickwidth = 4
         for i in range(17):
             for n in range(len(subset)):
-                index = subset[n][np.array(self.limb_sequence[i]) - 1]
+                index = subset[n][np.array(self.limb_sequence[i],
+                                           dtype=np.int32) - 1]
                 if -1 in index:
                     continue
                 cur_canvas = canvas.copy()
@@ -441,17 +443,19 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                     poses_msg.poses.append(pose_msg)
 
         people_pose = []
+        rospy.loginfo("candidate = {}".format(candidate))
         for person in subset:
             person_pose = []
             for i, limb_name in enumerate(self.index2limbname):
                 index = int(person[i])
                 if index == -1 or index >= candidate.shape[0]:
                     continue
-                X, Y = candidate[index]
+                rospy.loginfo("index = {}".format(index))
+                X, Y = candidate[index, :2]
                 person_pose.append(dict(limb=limb_name,
-                                        x=chainer.cuda.to_cpu(X),
-                                        y=chainer.cuda.to_cpu(Y),))
-        people_pose.append(person_pose)
+                                        x=X,
+                                        y=Y,))
+            people_pose.append(person_pose)
 
         # visualize skeleton
         return canvas, poses_msg, people_pose
