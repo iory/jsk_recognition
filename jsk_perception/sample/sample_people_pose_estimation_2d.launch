@@ -6,6 +6,11 @@
   <arg name="INPUT_DEPTH_IMAGE" default="/camera/depth_registered/sw_registered/image_rect" />
   <arg name="INPUT_CAMERA_INFO" default="/camera/rgb/camera_info" />
 
+  <param name="/use_sim_time" value="true" />
+  <node name="rosbag_play"
+        pkg="rosbag" type="play"
+        args="$(find jsk_perception)/sample/data/2017-06-16-12-00-00_people_images_in_lab.bag --clock --loop" />
+
   <node name="people_pose_estimation_2d"
         pkg="jsk_perception" type="people_pose_estimation_2d.py"
         output="screen">
