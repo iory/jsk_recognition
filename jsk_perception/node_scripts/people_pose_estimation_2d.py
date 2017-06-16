@@ -7,11 +7,9 @@ import pickle
 import chainer
 from chainer import cuda
 import chainer.functions as F
-import cupy
 
 import cv2
 import matplotlib
-import pylab as plt
 import numpy as np
 import chainer.links.caffe
 import cv_bridge
@@ -19,8 +17,6 @@ from jsk_topic_tools import ConnectionBasedTransport
 import rospy
 from sensor_msgs.msg import Image
 from sensor_msgs.msg import CameraInfo
-from jsk_recognition_msgs.msg import PeoplePose2D
-from jsk_recognition_msgs.msg import PeoplePose2DArray
 from jsk_recognition_msgs.msg import PeoplePose
 from jsk_recognition_msgs.msg import PeoplePoseArray
 import message_filters
@@ -100,8 +96,6 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         self.with_depth = rospy.get_param('~with_depth', False)
         self._load_model()
         self.pub = self.advertise('~output', Image, queue_size=1)
-        self.pose_2d_pub = self.advertise(
-            '~pose_2d', PeoplePose2DArray, queue_size=1)
         self.pose_pub = self.advertise('~pose', PeoplePoseArray, queue_size=1)
 
     def _load_model(self):
@@ -176,18 +170,30 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                                                z=z))
                 people_pose_msg.poses.append(pose_msg)
 
-        # self.pose_2d_pub.publish(poses_msg)
         self.pose_pub.publish(people_pose_msg)
         self.pub.publish(pose_estimated_msg)
 
     def _cb(self, img_msg):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        pose_estimated_img, _ = self.pose_estimate(img)
+        pose_estimated_img, people_joint_positions = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(
             pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
+
+        people_pose_msg = PeoplePoseArray()
+        people_pose_msg.header = img_msg.header
+        for person_joint_positions in people_joint_positions:
+            pose_msg = PeoplePose()
+            for joint_pos in person_joint_positions:
+                pose_msg.limb_names.append(joint_pos['limb'])
+                pose_msg.points.append(Point32(x=joint_pos['x'],
+                                               y=joint_pos['y'],
+                                               z=0))
+                people_pose_msg.poses.append(pose_msg)
+
+        self.pose_pub.publish(people_pose_msg)
         self.pub.publish(pose_estimated_msg)
 
     def pose_estimate(self, bgr):

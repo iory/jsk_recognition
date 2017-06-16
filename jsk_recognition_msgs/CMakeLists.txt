@@ -61,8 +61,6 @@ add_message_files(
   Segment.msg
   SegmentStamped.msg
   SegmentArray.msg
-  PeoplePose2D.msg
-  PeoplePose2DArray.msg
   PeoplePose.msg
   PeoplePoseArray.msg
   )
