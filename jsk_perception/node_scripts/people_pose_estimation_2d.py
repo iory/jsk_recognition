@@ -82,6 +82,11 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                       "LEar",
                       "Bkg"]
 
+    colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0],
+              [0, 255, 85], [0, 255, 170], [0, 255, 255], [
+                  0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255],
+              [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+
     def __init__(self):
         super(self.__class__, self).__init__()
         self.backend = rospy.get_param('~backend', 'chainer')
@@ -90,6 +95,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         self.pad_value = rospy.get_param('~pad_value', 128)
         self.thre1 = rospy.get_param('~thre1', 0.1)
         self.thre2 = rospy.get_param('~thre2', 0.05)
+        self.visualize = rospy.get_param('~visualize', True)
         self.gpu = rospy.get_param('~gpu', -1)  # -1 is cpu mode
         self.with_depth = rospy.get_param('~with_depth', False)
         self._load_model()
@@ -105,15 +111,9 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             raise RuntimeError('Unsupported backend: %s', self.backend)
 
     def _load_chainer_model(self):
-        # model_name = rospy.get_param('~model_name')
-        # model_h5 = rospy.get_param('~model_h5')
         model_file = rospy.get_param('~model_file')
-        # model = dict(caffemodel="/home/iory/workspace/caffe_rtpose/model/coco/pose_iter_440000.caffemodel")
-        # rospy.loginfo('Loading trained model: {0}'.format(model_h5))
-        # S.load_hdf5(model_h5, self.model)
-        # rospy.loginfo('Finished loading trained model: {0}'.format(model_h5))
-        # self.func = chainer.functions.caffe.CaffeFunction(model['caffemodel'])
         self.func = pickle.load(open(model_file, 'rb'))
+        rospy.loginfo('Finished loading trained model: {0}'.format(model_file))
         if self.gpu != -1:
             self.func.to_gpu(self.gpu)
 
@@ -148,7 +148,6 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
         depth_img = br.imgmsg_to_cv2(depth_msg, 'passthrough')
-        # depth_img = np.squeeze(np.array(depth_img, dtype=np.float32))
         depth_img = np.array(depth_img, dtype=np.float32)
 
         pose_estimated_img, poses_msg, people_pose = self.pose_estimate(img)
@@ -166,7 +165,6 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         for person_pose in people_pose:
             pose_msg = PeoplePose()
             for pose in person_pose:
-                # rospy.loginfo("{} {} {}".format(int(pose['y']), int(pose['x']), depth_img[int(pose['y']), int(pose['x'])]))
                 z = float(depth_img[int(pose['y'])][int(pose['x'])])
                 x = (pose['x'] - cx) * z / fx
                 y = (pose['y'] - cy) * z / fy
@@ -261,8 +259,9 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         peaks_order = peaks[..., 2]
         all_peaks = all_peaks[xp.argsort(peaks_order)]
         all_peaks[:, 3] = xp.arange(peak_counter, dtype=np.float32)
-        all_peaks = chainer.cuda.to_cpu(all_peaks)
-        peaks_order = chainer.cuda.to_cpu(peaks_order)
+        if self.gpu != -1:
+            all_peaks = chainer.cuda.to_cpu(all_peaks)
+            peaks_order = chainer.cuda.to_cpu(peaks_order)
         all_peaks = np.split(all_peaks, np.cumsum(np.bincount(peaks_order, minlength=18)))
         connection_all = []
         mid_num = 10
@@ -289,7 +288,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         target_candidates_A = [all_candidates_A[index] for index in target_indices]
 
         vec = np.vstack(target_candidates_B)[:, :2] - np.vstack(target_candidates_A)[:, :2]
-        vec = chainer.cuda.to_gpu(vec)
+        if self.gpu != -1:
+            vec = chainer.cuda.to_gpu(vec)
         norm = xp.sqrt(xp.sum(vec ** 2, axis=1)) + eps
         vec = vec / norm[:, None]
         start_end = zip(np.round(np.mgrid[np.vstack(target_candidates_A)[:, 1].reshape(-1, 1):np.vstack(target_candidates_B)[:, 1].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
@@ -310,13 +310,14 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         indices_bins = np.cumsum(nAs * nBs)
         indices_bins = np.concatenate([np.zeros(1), indices_bins]).astype(np.int32)
         target_candidate_indices = xp.nonzero(criterion)[0]
-        target_candidate_indices = chainer.cuda.to_cpu(target_candidate_indices)
+        if self.gpu != -1:
+            target_candidate_indices = chainer.cuda.to_cpu(target_candidate_indices)
+            score_with_dist_prior = chainer.cuda.to_cpu(score_with_dist_prior)
 
         k_s = np.digitize(target_candidate_indices, indices_bins) - 1
         i_s = (target_candidate_indices - (indices_bins[k_s])) // nBs[k_s]
         j_s = (target_candidate_indices - (indices_bins[k_s])) % nBs[k_s]
 
-        score_with_dist_prior = chainer.cuda.to_cpu(score_with_dist_prior)
         connection_candidate = np.concatenate([k_s.reshape(-1, 1),
                                                i_s.reshape(-1, 1),
                                                j_s.reshape(-1, 1),
@@ -398,22 +399,23 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
 
-        # visualize
-        colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0],
-                  [0, 255, 85], [0, 255, 170], [0, 255, 255], [
-                      0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255],
-                  [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
-        cmap = matplotlib.cm.get_cmap('hsv')
+        if self.visualize:
+            result_img = self._visualize(bgr_img, subset, all_peaks, candidate)
+        else:
+            result_img = bgr_img
 
-        canvas = bgr_img[:]
+        return result_img, self._extract_joint_position(subset, candidate)
+
+    def _visualize(self, img, subset, all_peaks, candidate):
+
+        cmap = matplotlib.cm.get_cmap('hsv')
         for i in range(18):
             rgba = np.array(cmap(1 - i / 18. - 1. / 36))
             rgba[0:3] *= 255
             for j in range(len(all_peaks[i])):
-                cv2.circle(canvas, (int(all_peaks[i][j][0]), int(
-                    all_peaks[i][j][1])), 4, colors[i], thickness=-1)
+                cv2.circle(img, (int(all_peaks[i][j][0]), int(
+                    all_peaks[i][j][1])), 4, self.colors[i], thickness=-1)
 
-        poses_msg = PeoplePose2DArray()
         stickwidth = 4
         for i in range(17):
             for n in range(len(subset)):
@@ -421,7 +423,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                                            dtype=np.int32) - 1]
                 if -1 in index:
                     continue
-                cur_canvas = canvas.copy()
+                cur_img = img.copy()
                 Y = candidate[index.astype(int), 0]
                 X = candidate[index.astype(int), 1]
                 mX = np.mean(X)
@@ -430,35 +432,24 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 angle = math.degrees(math.atan2(X[0] - X[1], Y[0] - Y[1]))
                 polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(
                     length / 2), stickwidth), int(angle), 0, 360, 1)
-                cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
-                canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
+                cv2.fillConvexPoly(cur_img, polygon, self.colors[i])
+                img = cv2.addWeighted(img, 0.4, cur_img, 0.6, 0)
 
-                for order, j in enumerate(index):
-                    j = int(j)
-                    pose_msg = PeoplePose2D()
-                    pose_msg.id = n
-                    pose_msg.x = X[order]
-                    pose_msg.y = Y[order]
-                    pose_msg.limb = self.index2limbname[i]
-                    poses_msg.poses.append(pose_msg)
+        return img
 
-        people_pose = []
-        rospy.loginfo("candidate = {}".format(candidate))
+    def _extract_joint_position(self, subset, candidate):
+        people_joint_positions = []
         for person in subset:
-            person_pose = []
+            person_joint_positions = []
             for i, limb_name in enumerate(self.index2limbname):
-                index = int(person[i])
-                if index == -1 or index >= candidate.shape[0]:
+                cand_idx = int(person[i])
+                if cand_idx == -1 or cand_idx >= candidate.shape[0]:
                     continue
-                rospy.loginfo("index = {}".format(index))
-                X, Y = candidate[index, :2]
-                person_pose.append(dict(limb=limb_name,
-                                        x=X,
-                                        y=Y,))
-            people_pose.append(person_pose)
-
-        # visualize skeleton
-        return canvas, poses_msg, people_pose
+                X, Y = candidate[cand_idx, :2]
+                person_joint_positions.append(dict(limb=limb_name,
+                                                   x=X,
+                                                   y=Y,))
+            people_joint_positions.append(person_joint_positions)
 
 
 if __name__ == '__main__':
