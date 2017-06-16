@@ -150,45 +150,44 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         depth_img = br.imgmsg_to_cv2(depth_msg, 'passthrough')
         depth_img = np.array(depth_img, dtype=np.float32)
 
-        pose_estimated_img, poses_msg, people_pose = self.pose_estimate(img)
+        pose_estimated_img, people_joint_positions = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(
             pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
-        poses_msg.header = img_msg.header
-        people_pose_msg = PeoplePoseArray()
 
+        people_pose_msg = PeoplePoseArray()
+        people_pose_msg.header = img_msg.header
+
+        # calculate xyz-position
         fx = camera_info_msg.K[0]
         fy = camera_info_msg.K[4]
         cx = camera_info_msg.K[2]
         cy = camera_info_msg.K[5]
-        for person_pose in people_pose:
+        for person_joint_positions in people_joint_positions:
             pose_msg = PeoplePose()
-            for pose in person_pose:
-                z = float(depth_img[int(pose['y'])][int(pose['x'])])
-                x = (pose['x'] - cx) * z / fx
-                y = (pose['y'] - cy) * z / fy
-                pose_msg.limb_names.append(pose['limb'])
+            for joint_pos in person_joint_positions:
+                z = float(depth_img[int(joint_pos['y'])][int(joint_pos['x'])])
+                x = (joint_pos['x'] - cx) * z / fx
+                y = (joint_pos['y'] - cy) * z / fy
+                pose_msg.limb_names.append(joint_pos['limb'])
                 pose_msg.points.append(Point32(x=x,
                                                y=y,
                                                z=z))
                 people_pose_msg.poses.append(pose_msg)
-        people_pose_msg.header = img_msg.header
 
+        # self.pose_2d_pub.publish(poses_msg)
         self.pose_pub.publish(people_pose_msg)
-        self.pose_2d_pub.publish(poses_msg)
         self.pub.publish(pose_estimated_msg)
 
     def _cb(self, img_msg):
         br = cv_bridge.CvBridge()
         img = br.imgmsg_to_cv2(img_msg, desired_encoding='bgr8')
-        pose_estimated_img, poses_msg, _ = self.pose_estimate(img)
+        pose_estimated_img, _ = self.pose_estimate(img)
         pose_estimated_msg = br.cv2_to_imgmsg(
             pose_estimated_img.astype(np.uint8))
         pose_estimated_msg.header = img_msg.header
         pose_estimated_msg.encoding = "bgr8"
-        poses_msg.header = img_msg.header
-        self.pose_2d_pub.publish(poses_msg)
         self.pub.publish(pose_estimated_msg)
 
     def pose_estimate(self, bgr):
@@ -262,7 +261,8 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         if self.gpu != -1:
             all_peaks = chainer.cuda.to_cpu(all_peaks)
             peaks_order = chainer.cuda.to_cpu(peaks_order)
-        all_peaks = np.split(all_peaks, np.cumsum(np.bincount(peaks_order, minlength=18)))
+        all_peaks = np.split(all_peaks, np.cumsum(
+            np.bincount(peaks_order, minlength=18)))
         connection_all = []
         mid_num = 10
         eps = 1e-8
@@ -277,17 +277,20 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
         nBs = np.array([len(candB) for candB in candBs])
         target_indices = np.nonzero(xp.logical_and(nAs != 0, nBs != 0))[0]
         if len(target_indices) == 0:
-            return bgr_img, PeoplePose2DArray(), []
+            return bgr_img, []
 
         all_candidates_A = [np.repeat(np.array(tmp_candA, dtype=np.float32), nB, axis=0)
                             for tmp_candA, nB in zip(candAs, nBs)]
         all_candidates_B = [np.tile(np.array(tmp_candB, dtype=np.float32), (nA, 1))
                             for tmp_candB, nA in zip(candBs, nAs)]
 
-        target_candidates_B = [all_candidates_B[index] for index in target_indices]
-        target_candidates_A = [all_candidates_A[index] for index in target_indices]
+        target_candidates_B = [all_candidates_B[index]
+                               for index in target_indices]
+        target_candidates_A = [all_candidates_A[index]
+                               for index in target_indices]
 
-        vec = np.vstack(target_candidates_B)[:, :2] - np.vstack(target_candidates_A)[:, :2]
+        vec = np.vstack(target_candidates_B)[
+            :, :2] - np.vstack(target_candidates_A)[:, :2]
         if self.gpu != -1:
             vec = chainer.cuda.to_gpu(vec)
         norm = xp.sqrt(xp.sum(vec ** 2, axis=1)) + eps
@@ -297,21 +300,24 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                             target_candidates_B)[:, 0].reshape(-1, 1):(mid_num * 1j)]).astype(np.int32),
                         np.concatenate([[[index] * mid_num for i in range(len(c))] for index, c in zip(target_indices, target_candidates_B)]),)
 
-        v = score_mid[np.concatenate(start_end, axis=1).tolist()].reshape(-1, mid_num, 2)
+        v = score_mid[np.concatenate(
+            start_end, axis=1).tolist()].reshape(-1, mid_num, 2)
         score_midpts = xp.sum(v * xp.repeat(vec, (mid_num),
                                             axis=0).reshape(-1, mid_num, 2), axis=2)
         score_with_dist_prior = xp.sum(score_midpts, axis=1) / mid_num + \
-                                                           xp.minimum(0.5 * bgr_img.shape[0] / norm - 1,
-                                                                      xp.zeros_like(norm, dtype=np.float32))
+            xp.minimum(0.5 * bgr_img.shape[0] / norm - 1,
+                       xp.zeros_like(norm, dtype=np.float32))
         c1 = xp.sum(score_midpts > self.thre2, axis=1) > 0.8 * mid_num
         c2 = score_with_dist_prior > 0.0
         criterion = xp.logical_and(c1, c2)
 
         indices_bins = np.cumsum(nAs * nBs)
-        indices_bins = np.concatenate([np.zeros(1), indices_bins]).astype(np.int32)
+        indices_bins = np.concatenate(
+            [np.zeros(1), indices_bins]).astype(np.int32)
         target_candidate_indices = xp.nonzero(criterion)[0]
         if self.gpu != -1:
-            target_candidate_indices = chainer.cuda.to_cpu(target_candidate_indices)
+            target_candidate_indices = chainer.cuda.to_cpu(
+                target_candidate_indices)
             score_with_dist_prior = chainer.cuda.to_cpu(score_with_dist_prior)
 
         k_s = np.digitize(target_candidate_indices, indices_bins) - 1
@@ -344,45 +350,51 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 connection_all[k] = np.vstack([connection_all[k], np.array(
                     [all_candidates_A[k][i][3], all_candidates_B[k][j][3], score, i, j], dtype=np.float32)])
 
-        subset = -1 * np.ones((0, 20))
-        candidate = np.array([item for sublist in all_peaks for item in sublist])
+        joint_cands_indices = -1 * np.ones((0, 20))
+        candidate = np.array(
+            [item for sublist in all_peaks for item in sublist])
         for k in range(len(self.map_idx)):
             partAs = connection_all[k][:, 0]
             partBs = connection_all[k][:, 1]
             indexA, indexB = np.array(self.limb_sequence[k]) - 1
             for i in range(len(connection_all[k])):  # = 1:size(temp,1)
                 found = 0
-                subset_idx = [-1, -1]
-                for j in range(len(subset)):  # 1:size(subset,1):
-                    if subset[j][indexA] == float(partAs[i]) or subset[j][indexB] == float(partBs[i]):
-                        subset_idx[found] = j
+                joint_cands_indices_idx = [-1, -1]
+                # 1:size(joint_cands_indices,1):
+                for j in range(len(joint_cands_indices)):
+                    if joint_cands_indices[j][indexA] == float(partAs[i]) or joint_cands_indices[j][indexB] == float(partBs[i]):
+                        joint_cands_indices_idx[found] = j
                         found += 1
 
                 if found == 1:
-                    j = subset_idx[0]
-                    if(subset[j][indexB] != float(partBs[i])):
-                        subset[j][indexB] = partBs[i]
-                        subset[j][-1] += 1
-                        subset[
+                    j = joint_cands_indices_idx[0]
+                    if(joint_cands_indices[j][indexB] != float(partBs[i])):
+                        joint_cands_indices[j][indexB] = partBs[i]
+                        joint_cands_indices[j][-1] += 1
+                        joint_cands_indices[
                             j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
-                        subset[
+                        joint_cands_indices[
                             j][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
                 elif found == 2:  # if found 2 and disjoint, merge them
-                    j1, j2 = subset_idx
-                    membership = ((subset[j1] >= 0).astype(
-                        int) + (subset[j2] >= 0).astype(int))[:-2]
+                    j1, j2 = joint_cands_indices_idx
+                    membership = ((joint_cands_indices[j1] >= 0).astype(
+                        int) + (joint_cands_indices[j2] >= 0).astype(int))[:-2]
                     if len(np.nonzero(membership == 2)[0]) == 0:  # merge
-                        subset[j1][:-2] += (subset[j2][:-2] + 1)
-                        subset[j1][-2:] += subset[j2][-2:]
-                        subset[j1][-2] += connection_all[k][i][2]
-                        subset = np.delete(subset, j2, 0)
+                        joint_cands_indices[j1][
+                            :-2] += (joint_cands_indices[j2][:-2] + 1)
+                        joint_cands_indices[
+                            j1][-2:] += joint_cands_indices[j2][-2:]
+                        joint_cands_indices[j1][-2] += connection_all[k][i][2]
+                        joint_cands_indices = np.delete(
+                            joint_cands_indices, j2, 0)
                     else:  # as like found == 1
-                        subset[j1][indexB] = partBs[i]
-                        subset[j1][-1] += 1
-                        subset[
+                        joint_cands_indices[j1][indexB] = partBs[i]
+                        joint_cands_indices[j1][-1] += 1
+                        joint_cands_indices[
                             j1][-2] += candidate[partBs[i].astype(int), 2] + connection_all[k][i][2]
 
-                # if find no partA in the subset, create a new subset
+                # if find no partA in the joint_cands_indices, create a new
+                # joint_cands_indices
                 elif not found and k < 17:
                     row = -1 * np.ones(20)
                     row[indexA] = partAs[i]
@@ -390,23 +402,24 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                     row[-1] = 2
                     row[-2] = sum(candidate[connection_all[k]
                                             [i, :2].astype(int), 2]) + connection_all[k][i][2]
-                    subset = np.vstack([subset, row])
+                    joint_cands_indices = np.vstack([joint_cands_indices, row])
 
-        # delete some rows of subset which has few parts occur
+        # delete some rows of joint_cands_indices which has few parts occur
         deleteIdx = []
-        for i in range(len(subset)):
-            if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
+        for i in range(len(joint_cands_indices)):
+            if joint_cands_indices[i][-1] < 4 or joint_cands_indices[i][-2] / joint_cands_indices[i][-1] < 0.4:
                 deleteIdx.append(i)
-        subset = np.delete(subset, deleteIdx, axis=0)
+        joint_cands_indices = np.delete(joint_cands_indices, deleteIdx, axis=0)
 
         if self.visualize:
-            result_img = self._visualize(bgr_img, subset, all_peaks, candidate)
+            result_img = self._visualize(
+                bgr_img, joint_cands_indices, all_peaks, candidate)
         else:
             result_img = bgr_img
 
-        return result_img, self._extract_joint_position(subset, candidate)
+        return result_img, self._extract_joint_position(joint_cands_indices, candidate)
 
-    def _visualize(self, img, subset, all_peaks, candidate):
+    def _visualize(self, img, joint_cands_indices, all_peaks, candidate):
 
         cmap = matplotlib.cm.get_cmap('hsv')
         for i in range(18):
@@ -418,9 +431,9 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
 
         stickwidth = 4
         for i in range(17):
-            for n in range(len(subset)):
-                index = subset[n][np.array(self.limb_sequence[i],
-                                           dtype=np.int32) - 1]
+            for joint_cand_indices in joint_cands_indices:
+                index = joint_cand_indices[np.array(self.limb_sequence[i],
+                                                    dtype=np.int32) - 1]
                 if -1 in index:
                     continue
                 cur_img = img.copy()
@@ -437,12 +450,12 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
 
         return img
 
-    def _extract_joint_position(self, subset, candidate):
+    def _extract_joint_position(self, joint_cands_indices, candidate):
         people_joint_positions = []
-        for person in subset:
+        for joint_cand_idx in joint_cands_indices:
             person_joint_positions = []
             for i, limb_name in enumerate(self.index2limbname):
-                cand_idx = int(person[i])
+                cand_idx = int(joint_cand_idx[i])
                 if cand_idx == -1 or cand_idx >= candidate.shape[0]:
                     continue
                 X, Y = candidate[cand_idx, :2]
