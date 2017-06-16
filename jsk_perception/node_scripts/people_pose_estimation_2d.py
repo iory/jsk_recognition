@@ -258,7 +258,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                        (heatmap_avg >= heatmav_down) & \
                        (heatmap_avg > self.thre1)
 
-        peaks = xp.array(xp.nonzero(peaks_binary[..., :18]), dtype=np.int32).T
+        peaks = xp.array(xp.nonzero(peaks_binary[..., :len(self.index2limbname)-1]), dtype=np.int32).T
         peak_counter = peaks.shape[0]
         all_peaks = xp.zeros((peak_counter, 4), dtype=np.float32)
         all_peaks[:, 0] = peaks[:, 1]
@@ -271,7 +271,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
             all_peaks = chainer.cuda.to_cpu(all_peaks)
             peaks_order = chainer.cuda.to_cpu(peaks_order)
         all_peaks = np.split(all_peaks, np.cumsum(
-            np.bincount(peaks_order, minlength=18)))
+            np.bincount(peaks_order, minlength=len(self.index2limbname)-1)))
         connection_all = []
         mid_num = 10
         eps = 1e-8
@@ -404,7 +404,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
 
                 # if find no partA in the joint_cands_indices, create a new
                 # joint_cands_indices
-                elif not found and k < 17:
+                elif not found and k < len(self.index2limbname) - 2:
                     row = -1 * np.ones(20)
                     row[indexA] = partAs[i]
                     row[indexB] = partBs[i]
@@ -431,7 +431,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
     def _visualize(self, img, joint_cands_indices, all_peaks, candidate):
 
         cmap = matplotlib.cm.get_cmap('hsv')
-        for i in range(18):
+        for i in range(len(self.index2limbname)-1):
             rgba = np.array(cmap(1 - i / 18. - 1. / 36))
             rgba[0:3] *= 255
             for j in range(len(all_peaks[i])):
@@ -439,7 +439,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                     all_peaks[i][j][1])), 4, self.colors[i], thickness=-1)
 
         stickwidth = 4
-        for i in range(17):
+        for i in range(len(self.index2limbname) - 2):
             for joint_cand_indices in joint_cands_indices:
                 index = joint_cand_indices[np.array(self.limb_sequence[i],
                                                     dtype=np.int32) - 1]
