@@ -171,7 +171,7 @@ class PeoplePoseEstimation2D(ConnectionBasedTransport):
                 pose_msg.points.append(Point32(x=x,
                                                y=y,
                                                z=z))
-                people_pose_msg.poses.append(pose_msg)
+            people_pose_msg.poses.append(pose_msg)
 
         self.pose_pub.publish(people_pose_msg)
         self.pub.publish(pose_estimated_msg)
