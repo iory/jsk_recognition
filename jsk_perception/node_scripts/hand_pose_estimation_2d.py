@@ -45,13 +45,22 @@ class HandPoseDetector2D(ConnectionBasedTransport):
 
     def __init__(self):
         super(HandPoseDetector2D, self).__init__()
+
         self.backend = rospy.get_param('~backend', 'chainer')
         self.gpu = rospy.get_param('~gpu', -1)  # -1 is cpu mode
         self.with_depth = rospy.get_param('~with_depth', False)
-        self.width = rospy.get_param('~with', None)
+        self.width = rospy.get_param('~width', None)
         self.height = rospy.get_param('~height', None)
         self.hand_heatmap_peak_thresh = rospy.get_param('~hand_heatmap_peak_thresh', 0.1)
         self.ksize = rospy.get_param('~kernel_size', 17)
+        self.gaussian_sigma = rospy.get_param('~gaussian_sigma', 2.5)
+
+        kernel = self.create_gaussian_kernel(
+            sigma=self.gaussian_sigma,
+            ksize=self.ksize)
+        if self.gpu >= 0:
+            kernel = chainer.cuda.to_gpu(kernel)
+        self.gaussian_kernel = kernel
         self._load_model()
         self.image_pub = self.advertise('~output', Image, queue_size=1)
         self.pose_pub = self.advertise('~pose', PeoplePoseArray, queue_size=1)
@@ -142,23 +151,24 @@ class HandPoseDetector2D(ConnectionBasedTransport):
         elif depth_msg.encoding != '32FC1':
             rospy.logerr('Unsupported depth encoding: %s' % depth_msg.encoding)
 
-        pose_estimated_img, people_joint_positions = self.pose_estimate(img)
+        key_points = self.pose_estimate(img)
+        pose_estimated_img = draw_hand_keypoints(img, key_points, (0, 0))
         pose_estimated_msg = br.cv2_to_imgmsg(
             pose_estimated_img.astype(np.uint8), encoding='bgr8')
         pose_estimated_msg.header = img_msg.header
 
-        people_pose_msg = PeoplePoseArray()
-        people_pose_msg.header = img_msg.header
-        people_pose_2d_msg = self._create_2d_people_pose_array_msgs(
-            people_joint_positions,
-            img_msg.header)
+        # people_pose_msg = PeoplePoseArray()
+        # people_pose_msg.header = img_msg.header
+        # people_pose_2d_msg = self._create_2d_people_pose_array_msgs(
+        #     people_joint_positions,
+        #     img_msg.header)
 
         # calculate xyz-position
         fx = camera_info_msg.K[0]
         fy = camera_info_msg.K[4]
         cx = camera_info_msg.K[2]
         cy = camera_info_msg.K[5]
-        for person_joint_positions in people_joint_positions:
+        for person_joint_positions in key_points:
             pose_msg = PeoplePose()
             for joint_pos in person_joint_positions:
                 if joint_pos['score'] < 0:
@@ -221,7 +231,7 @@ class HandPoseDetector2D(ConnectionBasedTransport):
         xp = self.model.xp
 
         if hand_type == "left":
-            hand_img = cv2.flip(bgr_image, 1)
+            bgr_image = cv2.flip(bgr_image, 1)
 
         original_height, original_width, _ = bgr_image.shape
 
@@ -229,15 +239,13 @@ class HandPoseDetector2D(ConnectionBasedTransport):
             resized_image = bgr_image
         else:
             resized_image = cv2.resize(
-                hand_img, (self.height, self.width))
+                bgr_image, (self.height, self.width))
         x = xp.array(resized_image[np.newaxis], dtype=np.float32).\
             transpose(0, 3, 1, 2) / 256.0 - 0.5
 
         hs = self.model(x)
         heatmaps = F.resize_images(hs[-1],
             (original_height, original_width)).data[0]
-
-        heatmaps = chainer.cuda.to_cpu(heatmaps)
 
         if hand_type == "left":
             heatmaps = cv2.flip(heatmaps.transpose(1, 2, 0), 1).transpose(2, 0, 1)
@@ -258,14 +266,14 @@ class HandPoseDetector2D(ConnectionBasedTransport):
 
     def compute_peaks_from_heatmaps(self, heatmaps):
         keypoints = []
-        xp = cuda.get_array_module(heatmaps)
+        xp = chainer.cuda.get_array_module(heatmaps)
 
         heatmaps = F.convolution_2d(heatmaps[:, None],
             self.gaussian_kernel, stride=1, pad=int(self.ksize/2)).data.squeeze()
         for heatmap in heatmaps[:-1]:
             max_value = heatmap.max()
             if max_value > self.hand_heatmap_peak_thresh:
-                coords = np.array(np.where(heatmap==max_value)).flatten().tolist()
+                coords = np.array(np.where(chainer.cuda.to_cpu(heatmap==max_value))).flatten().tolist()
                 keypoints.append([coords[1], coords[0], max_value])
             else:
                 keypoints.append(None)
