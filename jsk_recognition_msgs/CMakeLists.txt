@@ -15,6 +15,8 @@ add_message_files(
   ClusterPointIndices.msg
   ColorHistogramArray.msg
   ColorHistogram.msg
+  ConvexBoundingBoxArray.msg
+  ConvexBoundingBox.msg
   DepthCalibrationParameter.msg
   DepthErrorResult.msg
   HeightmapConfig.msg
