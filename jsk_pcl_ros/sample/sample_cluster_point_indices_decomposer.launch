@@ -2,6 +2,7 @@
 
   <arg name="gui" default="true" />
   <arg name="use_pca" default="true" />
+  <arg name="publish_negative_indices" default="true" />
 
   <param name="/use_sim_time" value="true" />
   <node name="rosbag_play"
@@ -27,6 +28,7 @@
       align_boxes: true
       align_boxes_with_plane: true
       use_pca: $(arg use_pca)
+      publish_negative_indices: $(arg publish_negative_indices)
     </rosparam>
   </node>
 
@@ -40,6 +42,7 @@
       align_boxes_with_plane: false
       target_frame_id: base
       use_pca: $(arg use_pca)
+      publish_negative_indices: $(arg publish_negative_indices)
     </rosparam>
   </node>
 
