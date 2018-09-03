@@ -81,6 +81,7 @@ namespace jsk_pcl_ros
     // fixed parameters
     pnh_->param("approximate_sync", use_async_, false);
     pnh_->param("queue_size", queue_size_, 100);
+    pnh_->param("publish_negative_indices", publish_negative_indices_, true);
     pnh_->param("publish_clouds", publish_clouds_, false);
     if (publish_clouds_) {
       NODELET_WARN("~output%%02d are not published before subscribed, you should subscribe ~debug_output in debuging.");
@@ -596,7 +597,9 @@ namespace jsk_pcl_ros
     if (publish_clouds_) {
       allocatePublishers(indices_input->cluster_indices.size());
     }
-    publishNegativeIndices(input, indices_input);
+    if (publish_negative_indices_) {
+      publishNegativeIndices(input, indices_input);
+    }
     pcl::ExtractIndices<pcl::PointXYZRGB> extract;
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
