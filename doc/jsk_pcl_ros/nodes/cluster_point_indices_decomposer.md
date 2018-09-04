@@ -73,10 +73,11 @@ It also publishes tf of centroids of each cluster and oriented bounding box of t
    Toggle tf publishing.
 * `~publish_clouds` (Boolean, default: `False`):
 
-   Toggle negative indices publishing.
+   Toggle `~output%02d` topics.
+
 * `~publish_negative_indices` (Boolean, default: `True`):
 
-   Toggle `~output%02d` topics.
+   Toggle `~negative_indices` publishing.
 
 * `~align_boxes` (Boolean, default: `False`):
 
