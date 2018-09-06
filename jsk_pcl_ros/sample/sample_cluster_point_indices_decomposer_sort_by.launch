@@ -1,6 +1,7 @@
 <launch>
 
   <arg name="gui" default="true" />
+  <arg name="publish_negative_indices" default="true" />
 
   <include file="$(find jsk_pcl_ros_utils)/sample/include/play_rosbag_arc2017_4objects.xml" />
 
@@ -67,9 +68,10 @@
         args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)">
     <remap from="~input" to="extract_indices/output" />
     <remap from="~target" to="label_to_cluster_indices/output" />
-    <rosparam>
+    <rosparam subst_value="true" >
       approximate_sync: true
       queue_size: 50
+      publish_negative_indices: $(arg publish_negative_indices)
     </rosparam>
   </node>
   <node name="bboxes_to_bbox"
@@ -91,13 +93,14 @@
       approximate_sync: true
       queue_size: 50
       sort_by: -z_axis
+      publish_negative_indices: $(arg publish_negative_indices)
     </rosparam>
   </node>
   <node name="bboxes_to_bbox_z_axis"
         pkg="nodelet" type="nodelet"
         args="load jsk_pcl_utils/BoundingBoxArrayToBoundingBox $(arg MANAGER)">
     <remap from="~input" to="cluster_point_indices_decomposer_z_axis/boxes" />
-    <rosparam>
+    <rosparam subst_value="true" >
       index: 0
     </rosparam>
   </node>
@@ -108,10 +111,11 @@
         args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)">
     <remap from="~input" to="extract_indices/output" />
     <remap from="~target" to="label_to_cluster_indices/output" />
-    <rosparam>
+    <rosparam subst_value="true" >
       approximate_sync: true
       queue_size: 50
       sort_by: -cloud_size
+      publish_negative_indices: $(arg publish_negative_indices)
     </rosparam>
   </node>
   <node name="bboxes_to_bbox_cloud_size"

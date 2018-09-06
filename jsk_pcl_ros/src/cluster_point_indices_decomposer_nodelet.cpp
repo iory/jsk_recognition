@@ -81,6 +81,7 @@ namespace jsk_pcl_ros
     // fixed parameters
     pnh_->param("approximate_sync", use_async_, false);
     pnh_->param("queue_size", queue_size_, 100);
+    pnh_->param("publish_negative_indices", publish_negative_indices_, true);
     pnh_->param("publish_clouds", publish_clouds_, false);
     if (publish_clouds_) {
       NODELET_WARN("~output%%02d are not published before subscribed, you should subscribe ~debug_output in debuging.");
@@ -566,19 +567,22 @@ namespace jsk_pcl_ros
     const sensor_msgs::PointCloud2ConstPtr &input,
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_input)
   {
-    std::set<int> all_indices;
+    if (negative_indices_pub_.getNumSubscribers() <= 0) {
+      return;
+    }
+    std::vector<int> all_indices;
+
     boost::copy(
       boost::irange(0, (int)(input->width * input->height)),
       std::inserter(all_indices, all_indices.begin()));
+
     for (size_t i = 0; i < indices_input->cluster_indices.size(); i++) {
-      std::set<int> indices_set(indices_input->cluster_indices[i].indices.begin(),
-                                indices_input->cluster_indices[i].indices.end());
-      std::set<int> diff_indices;
-      std::set_difference(all_indices.begin(), all_indices.end(),
-                          indices_set.begin(), indices_set.end(),
-                          std::inserter(diff_indices, diff_indices.begin()));
-      all_indices = diff_indices;
+      for (size_t j = 0; j < indices_input->cluster_indices[i].indices.size(); ++j) {
+        all_indices[indices_input->cluster_indices[i].indices[j]] = -1;
+      }
     }
+    all_indices.erase(std::remove(all_indices.begin(), all_indices.end(), -1), all_indices.end());
+
     // publish all_indices
     pcl_msgs::PointIndices ros_indices;
     ros_indices.indices = std::vector<int>(all_indices.begin(), all_indices.end());
@@ -596,7 +600,9 @@ namespace jsk_pcl_ros
     if (publish_clouds_) {
       allocatePublishers(indices_input->cluster_indices.size());
     }
-    publishNegativeIndices(input, indices_input);
+    if (publish_negative_indices_) {
+      publishNegativeIndices(input, indices_input);
+    }
     pcl::ExtractIndices<pcl::PointXYZRGB> extract;
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>);
