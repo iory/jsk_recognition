@@ -103,7 +103,7 @@ def preprocess_image(img, key_points=None, img_size=224):
             # image center in (x,y)
             center = center[::-1]
     crop_img, proc_param = scale_and_crop(img, scale, center,
-                                      img_size)
+                                          img_size)
 
     # Normalize image to [-1, 1]
     crop_img = 2 * ((crop_img / 255.) - 0.5)
