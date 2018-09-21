@@ -34,20 +34,6 @@
  *********************************************************************/
 #define BOOST_PARAMETER_MAX_ARITY 7
 #include "jsk_recognition_utils/geo_util.h"
-#include "jsk_recognition_utils/pcl_conversion_util.h"
-#include <algorithm>
-#include <iterator>
-#include <cfloat>
-#include <pcl/conversions.h>
-#include <boost/tuple/tuple_comparison.hpp>
-
-#include <boost/foreach.hpp>
-#include <boost/range/irange.hpp>
-#include <boost/math/special_functions/round.hpp>
-#include <jsk_topic_tools/log_utils.h>
-#include <pcl/point_types.h>
-#include <pcl/surface/processing.h>
-#include "jsk_recognition_utils/sensor_model_utils.h"
 
 // #define DEBUG_GEO_UTIL
 namespace jsk_recognition_utils

@@ -34,14 +34,6 @@
  *********************************************************************/
 #define BOOST_PARAMETER_MAX_ARITY 7
 #include "jsk_recognition_utils/grid_map.h"
-#include <boost/make_shared.hpp>
-#include <Eigen/Core>
-#include "jsk_recognition_utils/geo_util.h"
-#include <eigen_conversions/eigen_msg.h>
-#include <nodelet/nodelet.h>
-#include "jsk_recognition_utils/pcl_conversion_util.h"
-#include <pcl/surface/convex_hull.h>
-#include <jsk_topic_tools/log_utils.h>
 //#define DEBUG_GRID_MAP
 
 namespace jsk_recognition_utils
