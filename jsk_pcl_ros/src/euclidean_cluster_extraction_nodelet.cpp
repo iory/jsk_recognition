@@ -35,6 +35,8 @@
 #include <pluginlib/class_list_macros.h>
 #include "jsk_pcl_ros/euclidean_cluster_extraction_nodelet.h" 
 #include <jsk_recognition_utils/pcl_util.h>
+#include <chrono>
+
 
 using namespace std;
 using namespace pcl;
@@ -56,6 +58,10 @@ namespace jsk_pcl_ros
     pcl::PointCloud<pcl::PointXYZ>::Ptr voxel_cloud(
       new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr preprocessed_cloud;
+
+    chrono::system_clock::time_point total_start, total_end;
+    double total_time;
+    total_start = chrono::system_clock::now();
     if (downsample_) {
       voxel.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
       voxel.setSaveLeafLayout(true);
@@ -70,6 +76,9 @@ namespace jsk_pcl_ros
       std::fill(downsample_to_original_indices_.begin(),
                 downsample_to_original_indices_.end(),
                 std::vector<int>());
+      std::vector<int> leaf_layout = voxel.getLeafLayout();
+      chrono::system_clock::time_point start, end;
+      start = chrono::system_clock::now();
       for (size_t i = 0; i < cloud->points.size(); ++i) {
         pcl::PointXYZ p = cloud->points[i];
         if (std::isnan(p.x) || std::isnan(p.y) || std::isnan(p.z)) {
@@ -82,15 +91,27 @@ namespace jsk_pcl_ros
         original_to_downsample_indices_[i] = index;
         downsample_to_original_indices_[index].push_back(i);
       }
+      end = chrono::system_clock::now();
+      double time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+      printf("time %lf[ms]\n", time);
     } else {
       preprocessed_cloud = cloud;
     }
+    total_end = chrono::system_clock::now();
+    total_time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(total_end - total_start).count() / 1000.0);
+    printf("voxel grid time %lf[ms]\n", total_time);
 
     if (preprocessed_cloud->points.size() == 0) {
       return;
     }
+    std::cout << "=====================================" << std::endl;
 
+    int iii = 0;
     for(pcl::PointIndices::Ptr point_indices : cluster_indices){
+      std::cout << iii++ << std::endl;
+      chrono::system_clock::time_point start, end;
+      double time;
+      start = chrono::system_clock::now();
       pcl::PointIndices::Ptr nonnan_indices (new pcl::PointIndices);
       for(int original_index : point_indices->indices) {
         int index;
@@ -109,6 +130,9 @@ namespace jsk_pcl_ros
         }
       }
       removeDuplicatedIndices(nonnan_indices);
+      end = chrono::system_clock::now();
+      time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+      printf("time %lf[ms]\n", time);
 
       pcl::PointIndices result_point_indices;
       if (nonnan_indices->indices.size() > 0) {
@@ -139,6 +163,9 @@ namespace jsk_pcl_ros
           impl.setSearchMethod(tree);
           impl.setInputCloud(filtered_cloud);
         }
+        end = chrono::system_clock::now();
+        time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+        printf("time %lf[ms]\n", time);
 
         std::vector<pcl::PointIndices> output_indices;
         {
@@ -167,6 +194,9 @@ namespace jsk_pcl_ros
             }
           }
         }
+        end = chrono::system_clock::now();
+        time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+        printf("time %lf[ms]\n", time);
         std::vector<int> result_indices;
         std::vector<int> examine_indices;
         if (keep_whole_cluster) {
@@ -193,7 +223,14 @@ namespace jsk_pcl_ros
       } else {
         clustered_indices.push_back(result_point_indices);
       }
+      end = chrono::system_clock::now();
+      time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+      printf("time %lf[ms]\n", time);
     }
+    total_end = chrono::system_clock::now();
+    total_time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(total_end - total_start).count() / 1000.0);
+    printf("time %lf[ms]\n", total_time);
+    std::cout << "===================================== end" << std::endl;
   }
 
   void EuclideanClustering::extract(
