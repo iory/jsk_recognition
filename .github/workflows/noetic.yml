@@ -33,7 +33,5 @@ jobs:
           TEST_PKGS : 'jsk_recognition_msgs' # to skip test
           BEFORE_SCRIPT : "
           sudo pip install numpy==1.16.6; sudo pip install fcn chainercv chainer-mask-rcnn==0.3.0 decorator==4.4.2 chainer==6.7.0 cupy-cuda91;
-          wget https://download.pytorch.org/whl/cu90/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl -O torch-1.1.0-cp27-cp27mu-linux_x86_64.whl;
-          wget https://download.pytorch.org/whl/cu90/torchvision-0.3.0-cp27-cp27mu-manylinux1_x86_64.whl -O torchvision-0.3.0-cp27-cp27mu-manylinux1_x86_64.whl;
-          sudo pip install torch-1.1.0-cp27-cp27mu-linux_x86_64.whl torchvision-0.3.0-cp27-cp27mu-manylinux1_x86_64.whl;
+          sudo pip install torch torchvision torchaudio;
           "
