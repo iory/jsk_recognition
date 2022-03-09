@@ -1,0 +1,5 @@
+cython==0.29.28           # via pyroomacoustics
+numpy==1.22.3             # via pyroomacoustics, scipy
+pybind11==2.9.1           # via pyroomacoustics
+pyroomacoustics==0.4.3    # via -r requirements.in
+scipy==1.8.0              # via pyroomacoustics

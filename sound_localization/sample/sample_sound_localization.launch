@@ -1,0 +1,46 @@
+<launch>
+
+  <arg name="gui" default="true" />
+
+  <include file="$(find sound_localization)/sample/include/play_rosbag_mic_array.xml" >
+  </include>
+
+  <group ns="tamago1" >
+    <node name="audio_to_harkwave"
+          pkg="sound_localization" type="audio_to_hark_0830.py"
+          output="screen" >
+      <remap from="~input" to="audio" />
+      <remap from="~output" to="harkwave" />
+    </node>
+
+    <node name="sound_localization"
+          pkg="sound_localization" type="sound_localize.py"
+          output="screen" >
+      <remap from="~input" to="harkwave" />
+    </node>
+  </group>
+
+  <group ns="tamago2" >
+    <node name="audio_to_harkwave"
+          pkg="sound_localization" type="audio_to_hark_0830.py"
+          output="screen" >
+      <remap from="~input" to="audio" />
+      <remap from="~output" to="harkwave" />
+    </node>
+  </group>
+
+  <!-- <node name="wavdata_node_copy" -->
+  <!--       pkg="sound_localization" type="wavdata_node_copy3.py" -->
+  <!--       output="screen" > -->
+  <!--   <remap from="~input1" to="/tamago1/harkwave" /> -->
+  <!--   <remap from="~input2" to="/tamago2/harkwave" /> -->
+  <!-- </node> -->
+
+  <group if="$(arg gui)" >
+    <node name="rviz"
+          pkg="rviz" type="rviz"
+          args="-d $(find sound_localization)/sample/config/sound_localization.rviz" >
+    </node>
+  </group>
+
+</launch>
