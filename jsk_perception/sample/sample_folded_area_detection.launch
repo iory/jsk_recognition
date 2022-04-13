@@ -1,0 +1,36 @@
+<launch>
+
+  <arg name="gui" default="true" />
+  <arg name="weight" default="$(find jsk_perception)/trained_data/20211222_fold_area_detection_Resnet_PPM.pth" />
+  <arg name="config" default="$(find jsk_perception)/trained_data/20211222_fold_area_detection_Resnet_PPM.yml" />
+  <arg name="use_dims" default="3" />
+  <arg name="image_size" default="256" />
+
+  <arg name="rgb" default="/head_mount_kinect/hd/image_color" />
+  <arg name="depth" default="/head_mount_kinect/hd/image_depth_rect" />
+  <arg name="camera_info" default="/head_mount_kinect/hd/camera_info" />
+
+  <arg name="x_offset_factor" default="0.1" />
+  <arg name="y_offset_factor" default="0.01" />
+
+  <node name="folded_area_detector"
+        pkg="jsk_perception" type="folded_area_detection.py"
+        output="screen" >
+    <param name="~weight_file" value="$(arg weight)" />
+    <param name="~config_path" value="$(arg config)" />
+    <param name="~use_dims" value="$(arg use_dims)" />
+    <param name="~image_size" value="$(arg image_size)" />
+    <param name="~rgb" value="$(arg rgb)" />
+    <param name="~depth" value="$(arg depth)" />
+    <param name="~camera_info" value="$(arg camera_info)" />
+    <param name="~x_offset_factor" value="$(arg x_offset_factor)" />
+    <param name="~y_offset_factor" value="$(arg y_offset_factor)" />
+  </node>
+
+  <group if="$(arg gui)" >
+    <node name="rviz"
+          pkg="rviz" type="rviz"
+          args="-d $(find jsk_perception)/sample/config/folded_area_detection.rviz" />
+  </group>
+
+</launch>

@@ -308,6 +308,12 @@ def main():
         url='https://drive.google.com/uc?id=1TVZot9T3lfVajzRcpR0jm7MgvraYJEMP',
         md5='7fa889085a7c3c18448c946ce5a31b52',
     )
+    download_data(
+        pkg_name=PKG,
+        path='trained_data/20211222_fold_area_detection_Resnet_PPM.yml',
+        url='https://drive.google.com/uc?id=1bWWjSKcwu6xuSRdqPrFmmHKr9sadx8uz',
+        md5='4be63bde8a90e6518ec2d4203f9a45e8',
+    )
 
 
 if __name__ == '__main__':
