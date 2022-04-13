@@ -301,6 +301,14 @@ def main():
         md5='9f39d3baa43cf1c962c8f752c009eb14',
     )
 
+    # node_scripts/fold_area_detection.py
+    download_data(
+        pkg_name=PKG,
+        path='trained_data/20211222_fold_area_detection_Resnet_PPM.pth',
+        url='https://drive.google.com/uc?id=1TVZot9T3lfVajzRcpR0jm7MgvraYJEMP',
+        md5='7fa889085a7c3c18448c946ce5a31b52',
+    )
+
 
 if __name__ == '__main__':
     main()

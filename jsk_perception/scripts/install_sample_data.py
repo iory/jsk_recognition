@@ -148,6 +148,14 @@ def main():
         ],
     )
 
+    download_data(
+        pkg_name=PKG,
+        path='sample/data/sample_2022-04-13-pr2-cloth.bag',
+        url='https://drive.google.com/uc?id=1daeYLClYOfauAHrMECBf_OXZ-zU1E4fW',
+        md5='5ddb1d045904879606273130d7159b28-zU1E4fW',
+        extract=False,
+    )
+
 
 if __name__ == '__main__':
     main()
