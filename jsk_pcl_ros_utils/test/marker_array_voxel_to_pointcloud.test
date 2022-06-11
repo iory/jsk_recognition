@@ -6,7 +6,7 @@
 
   <test test-name="test_marker_array_voxel_to_pointcloud"
         name="test_marker_array_voxel_to_pointcloud"
-        pkg="jsk_recognition_utils" type="test_topic_published.py"
+        pkg="jsk_tools" type="test_topic_published.py"
         retry="3">
     <rosparam>
       topic_0: /marker_array_voxel_to_pointcloud/output
