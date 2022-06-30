@@ -168,8 +168,9 @@ namespace jsk_recognition_utils
     int max_x = 0;
     int max_y = 0;
     for (int j = 0; j < image.rows; j++) {
+      const unsigned char *src = image.ptr<const unsigned char>(j);
       for (int i = 0; i < image.cols; i++) {
-        if (image.at<uchar>(j, i) != 0) {
+        if (*(src + i) != 0) {
           min_x = std::min(min_x, i);
           min_y = std::min(min_y, j);
           max_x = std::max(max_x, i);
