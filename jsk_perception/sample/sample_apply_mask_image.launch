@@ -8,6 +8,7 @@
       file_name: $(find jsk_perception)/sample/kiva_pod_image_color.jpg
       encoding: bgr8
       publish_info: false
+      rate: 30
     </rosparam>
   </node>
   <arg name="INPUT_IMAGE" default="image_publisher/output" />
@@ -18,6 +19,7 @@
       file_name: $(find jsk_perception)/sample/kiva_pod_mask.jpg
       encoding: mono8
       publish_info: false
+      rate: 30
     </rosparam>
   </node>
   <arg name="MASK_IMAGE" default="mask_publisher/output" />
@@ -29,6 +31,8 @@
     <remap from="~input/mask" to="$(arg MASK_IMAGE)" />
     <rosparam>
       approximate_sync: true
+      clip: false
+      negative: true
     </rosparam>
   </node>
 
