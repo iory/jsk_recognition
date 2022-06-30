@@ -126,20 +126,22 @@ namespace jsk_perception
       cv::bitwise_not(mask, mask);
     }
 
-    cv::Rect region = jsk_recognition_utils::boundingRectOfMaskImage(mask);
-    if (camera_info_) {
-      sensor_msgs::CameraInfo camera_info(*camera_info_);
-      camera_info.header = image_msg->header;
-      camera_info.roi.x_offset = region.x;
-      camera_info.roi.y_offset = region.y;
-      camera_info.roi.width = region.width;
-      camera_info.roi.height = region.height;
-      camera_info.roi.do_rectify = use_rectified_image_;
-      pub_camera_info_.publish(camera_info);
-    }
-    if (clip_) {
-      mask = mask(region);
-      image = image(region);
+    if (clip_ || pub_camera_info_.getNumSubscribers() > 0) {
+      cv::Rect region = jsk_recognition_utils::boundingRectOfMaskImage(mask);
+      if (camera_info_) {
+        sensor_msgs::CameraInfo camera_info(*camera_info_);
+        camera_info.header = image_msg->header;
+        camera_info.roi.x_offset = region.x;
+        camera_info.roi.y_offset = region.y;
+        camera_info.roi.width = region.width;
+        camera_info.roi.height = region.height;
+        camera_info.roi.do_rectify = use_rectified_image_;
+        pub_camera_info_.publish(camera_info);
+      }
+      if (clip_) {
+        mask = mask(region);
+        image = image(region);
+      }
     }
 
     if (negative_ && !negative_before_clip_) {
