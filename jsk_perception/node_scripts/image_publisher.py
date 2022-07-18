@@ -221,11 +221,8 @@ class ImagePublisher(object):
         else:
             rospy.logerr('unsupported encoding: {0}'.format(encoding))
             return
-        compressed_msg = CompressedImage()
-        compressed_msg.format = "jpeg"
-        compressed_msg.data = np.array(
-            cv2.imencode('.jpg', img)[1]).tostring()
-        return bridge.cv2_to_imgmsg(img, encoding=encoding), compressed_msg
+        return bridge.cv2_to_imgmsg(img, encoding=encoding), \
+            bridge.cv2_to_compressed_imgmsg(img, dst_format='jpg')
 
 
 if __name__ == '__main__':
