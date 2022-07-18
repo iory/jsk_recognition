@@ -19,6 +19,7 @@ import re
 from PIL import Image as PIL_Image
 from PIL import ExifTags as PIL_ExifTags
 from jsk_recognition_msgs.msg import ExifTags, ExifGPSInfo
+import imghdr
 
 class ImagePublisher(object):
 
@@ -105,6 +106,7 @@ class ImagePublisher(object):
     def _cb_dyn_reconfig(self, config, level):
         file_name = config['file_name']
         config['file_name'] = os.path.abspath(file_name)
+        self.dst_format = imghdr.what(file_name)
         img = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
         if img is None:
             rospy.logwarn('Could not read image file: {}'.format(file_name))
@@ -222,7 +224,7 @@ class ImagePublisher(object):
             rospy.logerr('unsupported encoding: {0}'.format(encoding))
             return
         return bridge.cv2_to_imgmsg(img, encoding=encoding), \
-            bridge.cv2_to_compressed_imgmsg(img, dst_format='jpg')
+            bridge.cv2_to_compressed_imgmsg(img, dst_format=self.dst_format)
 
 
 if __name__ == '__main__':
