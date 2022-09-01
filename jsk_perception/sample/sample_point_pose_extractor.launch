@@ -26,7 +26,8 @@
   </node>
 
   <node name="point_pose_extractor"
-        pkg="jsk_perception" type="point_pose_extractor"
+        pkg="nodelet" type="nodelet"
+        args="load jsk_perception/PointPoseExtractor nodelet_manager" >
         respawn="false" output="screen" required="true" >
     <rosparam subst_value="true">
       template_filename: $(find jsk_perception)/sample/image/pai_no_mi.jpg
