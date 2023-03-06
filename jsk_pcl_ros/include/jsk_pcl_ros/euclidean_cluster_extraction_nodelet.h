@@ -112,6 +112,7 @@ namespace jsk_pcl_ros
     bool approximate_sync_;
     int queue_size_;
     int cluster_filter_type_;
+    bool use_cluster_indices_header_;
 
     std::vector<std::vector<int> > downsample_to_original_indices_;
     std::vector<int> original_to_downsample_indices_;

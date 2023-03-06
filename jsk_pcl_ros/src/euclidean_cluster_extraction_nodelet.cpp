@@ -301,7 +301,11 @@ namespace jsk_pcl_ros
     jsk_recognition_msgs::ClusterPointIndices result;
     result.cluster_indices.resize(clustered_indices.size());
     cluster_counter_.add(clustered_indices.size());
-    result.header = input->header;
+    if (use_cluster_indices_header_) {
+      result.header = input_cluster_indices->header;
+    } else {
+      result.header = input->header;
+    }
 
     for (size_t i = 0; i < clustered_indices.size(); i++) {
 #if ROS_VERSION_MINIMUM(1, 10, 0)
@@ -318,7 +322,12 @@ namespace jsk_pcl_ros
     result_pub_.publish(result);
 
     jsk_recognition_msgs::Int32Stamped::Ptr cluster_num_msg (new jsk_recognition_msgs::Int32Stamped);
-    cluster_num_msg->header = input->header;
+
+    if (use_cluster_indices_header_) {
+      cluster_num_msg->header = input_cluster_indices->header;
+    } else {
+      cluster_num_msg->header = input->header;
+    }
     cluster_num_msg->data = clustered_indices.size();
     cluster_num_pub_.publish(cluster_num_msg);
 
@@ -386,6 +395,7 @@ namespace jsk_pcl_ros
     pnh_->param("multi", multi_, false);
     pnh_->param("approximate_sync", approximate_sync_, false);
     pnh_->param("queue_size", queue_size_, 20);
+    pnh_->param("use_cluster_indices_header", use_cluster_indices_header_, false);
 
     ////////////////////////////////////////////////////////
     // dynamic reconfigure

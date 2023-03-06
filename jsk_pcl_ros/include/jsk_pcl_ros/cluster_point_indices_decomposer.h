@@ -184,6 +184,7 @@ namespace jsk_pcl_ros
     int max_size_;
     int min_size_;
     std::string sort_by_;
+    bool use_cluster_indices_header_;
 
     jsk_recognition_utils::Counter cluster_counter_;
     

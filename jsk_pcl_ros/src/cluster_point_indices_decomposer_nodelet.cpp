@@ -96,6 +96,7 @@ namespace jsk_pcl_ros
     pnh_->param("approximate_sync", use_async_, false);
     pnh_->param("queue_size", queue_size_, 100);
     pnh_->param("publish_clouds", publish_clouds_, false);
+    pnh_->param("use_cluster_indices_header", use_cluster_indices_header_, false);
     if (publish_clouds_) {
       NODELET_WARN("~output%%02d are not published before subscribed, you should subscribe ~debug_output in debuging.");
     }
@@ -713,7 +714,12 @@ namespace jsk_pcl_ros
     pcl::PointCloud<pcl::PointXYZRGB> debug_output;
     jsk_recognition_msgs::BoundingBoxArray bounding_box_array;
     jsk_recognition_msgs::ClusterPointIndices out_cluster_indices;
-    bounding_box_array.header = input->header;
+    if (use_cluster_indices_header_) {
+      bounding_box_array.header = indices_input->header;
+    } else {
+      bounding_box_array.header = input->header;
+    }
+
     geometry_msgs::PoseArray center_pose_array;
     center_pose_array.header = input->header;
     out_cluster_indices.header = input->header;
