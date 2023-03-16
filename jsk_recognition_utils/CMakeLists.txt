@@ -38,8 +38,8 @@ configure_file(
 # Download
 # ------------------------------------------------------------------------------------
 
-# download and install font data
-add_custom_target(${PROJECT_NAME}_install_font_data ALL COMMAND python$ENV{ROS_PYTHON_VERSION} ${PROJECT_SOURCE_DIR}/scripts/install_font_data.py)
+# # download and install font data
+# add_custom_target(${PROJECT_NAME}_install_font_data ALL COMMAND python$ENV{ROS_PYTHON_VERSION} ${PROJECT_SOURCE_DIR}/scripts/install_font_data.py)
 
 catkin_python_setup()
 
