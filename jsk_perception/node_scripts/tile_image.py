@@ -125,6 +125,7 @@ class TileImages(ConnectionBasedTransport):
                 self.cache_img = out_bgr
         bridge = cv_bridge.CvBridge()
         imgmsg = bridge.cv2_to_imgmsg(out_bgr, encoding='bgr8')
+        imgmsg.header.stamp = rospy.Time.now()
         self.pub_img.publish(imgmsg)
     def _apply(self, *msgs):
         bridge = cv_bridge.CvBridge()
